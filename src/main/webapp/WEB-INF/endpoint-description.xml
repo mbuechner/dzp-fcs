@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<EndpointDescription xmlns="http://clarin.eu/fcs/endpoint-description"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://clarin.eu/fcs/endpoint-description ../../resources/Endpoint-Description.xsd"
+    version="2">
+    <Capabilities>
+        <Capability>http://clarin.eu/fcs/capability/basic-search</Capability>
+        <!-- <Capability>http://clarin.eu/fcs/capability/advanced-search</Capability> -->
+    </Capabilities>
+    <SupportedDataViews>
+        <SupportedDataView id="hits" delivery-policy="send-by-default">application/x-clarin-fcs-hits+xml</SupportedDataView>
+    </SupportedDataViews>
+    <Resources>
+        <Resource pid="https://www.deutsche-digitale-bibliothek.de/newspaper">
+            <Title xml:lang="en">German newspaper portal</Title>
+            <Title xml:lang="de">Deutsches Zeitungsportal</Title>
+            <Description xml:lang="en">The German newspaper portal makes digitized historical newspapers from four centuries available online. Free of charge and without access restrictions.</Description>
+            <Description xml:lang="de">Das deutsche Zeitungsportal macht digitalisierte historische Zeitungen aus vier Jahrhunderten online verfügbar. Kostenfrei und ohne Zugangsbeschränkungen.</Description>
+            <LandingPageURI>https://www.deutsche-digitale-bibliothek.de/newspaper</LandingPageURI>
+            <Languages>
+                <Language>eng</Language>
+                <Language>deu</Language>
+            </Languages>
+            <AvailableDataViews ref="hits" />
+        </Resource>
+    </Resources>
+</EndpointDescription>

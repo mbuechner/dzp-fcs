@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration>
+    <Properties>
+        <Property name="layout">%d %p %C{1.} [%t] %m%n</Property>
+    </Properties>
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout
+                pattern="%style{%d{ISO8601}}{grey} %highlight{%-5level }[%style{%t}{bright,blue}] %style{%C{1.}}{bright,yellow}: %msg%n%throwable" />
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <Logger name="de.ddb.labs.dzpfcs" level="info" additivity="false">
+            <AppenderRef ref="Console" />
+        </Logger>
+        <Logger name="eu.clarin.sru.server.fcs.utils.SimpleEndpointDescriptionParser" level="info" additivity="false">
+            <AppenderRef ref="Console" />
+        </Logger>
+        <Logger name="eu.clarin.sru.server" level="info" additivity="false">
+            <AppenderRef ref="Console" />
+        </Logger>
+        <!-- LOG everything at INFO level -->
+        <Root level="info">
+            <AppenderRef ref="Console" />
+        </Root>
+    </Loggers>
+</Configuration>
