@@ -353,16 +353,17 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         }
 
         /* start search (query = myQuery, offset = startRecord, limit = maximumRecords) */
-        MyResults results = new MyResults(pid, myQuery, new ArrayList<MyResults.ResultEntry>() {
+        final MyResults results = new MyResults(pid, myQuery, new ArrayList<MyResults.ResultEntry>() {
             {
                 for (SolrDoc doc : docList) {
                     MyResults.ResultEntry entry = new MyResults.ResultEntry();
+                    entry.pid = doc.getId();
                     entry.landingpage = doc.getDzpUrl(myQuery);
                     entry.text = doc.getPlainpagefulltext().get(0);
                     add(entry);
                 }
             }
-        }, numFound, startRecord); // FIXME: fake results
+        }, numFound, startRecord);
 
         if (results == null) {
             throw new SRUException(SRUConstants.SRU_GENERAL_SYSTEM_ERROR, "Error in Searcher");
@@ -554,6 +555,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
      * non-fatal diagnostics
      * @param pid resource PID String, to validate requested Data Views
      * @return a list of String Data View identifiers, may be empty
+     * @throws eu.clarin.sru.server.SRUException
      *
      * @see #search(SRUServerConfig, SRURequest, SRUDiagnosticList)
      */

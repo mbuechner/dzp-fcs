@@ -240,7 +240,7 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
         ResultEntry result = results.getResults().get(currentRecordCursor);
 
         XMLStreamWriterHelper.writeStartResource(writer, results.getPid(), null);
-        XMLStreamWriterHelper.writeStartResourceFragment(writer, result.lemma, result.landingpage);
+        XMLStreamWriterHelper.writeStartResourceFragment(writer, result.pid, result.landingpage);
 
         if (request != null && request.isQueryType(DzpConstants.SRU_QUERY_TYPE_LEX)) {
             writeLexHitsDataview(writer, result);

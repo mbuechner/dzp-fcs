@@ -18,12 +18,17 @@ package de.ddb.labs.dzpfcs.searcher;
 
 import java.util.ArrayList;
 import java.util.List;
+import lombok.Getter;
 
 public class MyResults {
+    @Getter
     private final String pid;
+    @Getter
     private final String query;
     private final List<ResultEntry> results;
+    @Getter
     private final long total;
+    @Getter
     private final long offset;
     
 
@@ -35,25 +40,9 @@ public class MyResults {
         this.offset = offset;
     }
 
-    public String getPid() {
-        return pid;
-    }
-
-    public String getQuery() {
-        return query;
-    }
-
     public List<ResultEntry> getResults() {
         return new ArrayList<>(results);
-    }
-
-    public long getTotal() {
-        return total;
-    }
-
-    public long getOffset() {
-        return offset;
-    }    
+    }  
 
     /**
      * Minimal single result entry. Consisting of only a text and
@@ -62,10 +51,7 @@ public class MyResults {
     public static class ResultEntry {
         public String text;
         public String landingpage;
-        public String lemma;
-
-        public ResultEntry() {
-        }
+        public String pid;
     
         @Override
         public String toString() {
