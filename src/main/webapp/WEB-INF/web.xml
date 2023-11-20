@@ -79,6 +79,6 @@
 
     <servlet-mapping>
         <servlet-name>SRU/CQL</servlet-name>
-        <url-pattern>/*</url-pattern>
+        <url-pattern>/app/dzp-fcs/*</url-pattern>
     </servlet-mapping>
 </web-app>
