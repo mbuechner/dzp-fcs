@@ -16,8 +16,6 @@
  */
 package de.ddb.labs.dzpfcs.query;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.z3950.zing.cql.CQLAndNode;
 import org.z3950.zing.cql.CQLBooleanNode;
 import org.z3950.zing.cql.CQLNode;
@@ -29,16 +27,15 @@ import eu.clarin.sru.server.SRUException;
 import eu.clarin.sru.server.fcs.parser.QueryParserException;
 
 /**
- * Source: https://gist.github.com/Querela/825a084f94b30de88827050eddc8e361#file-cqltosolrconverter-java
+ * Source:
+ * https://gist.github.com/Querela/825a084f94b30de88827050eddc8e361#file-cqltosolrconverter-java
+ *
  * @author Erik Körner <https://github.com/Querela/>
  */
 public class CQLToSolrConverter {
 
-    private static final Logger LOGGER = LogManager.getLogger(CQLToSolrConverter.class);
-
-    public static String convertCQLtoSolrQuery(final CQLNode node)
-            throws QueryParserException, SRUException {
-        StringBuilder sb = new StringBuilder();
+    public static String convertCQLtoSolrQuery(final CQLNode node) throws QueryParserException, SRUException {
+        final StringBuilder sb = new StringBuilder();
 
         convertCQLtoSolrSingle(node, sb);
 
@@ -49,9 +46,7 @@ public class CQLToSolrConverter {
         if (node instanceof CQLTermNode) {
             final CQLTermNode tn = ((CQLTermNode) node);
             if (tn.getIndex() != null && !"cql.serverChoice".equalsIgnoreCase(tn.getIndex())) {
-                throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN,
-                        "Queries with queryType 'cql' do not support index/relation on '"
-                        + node.getClass().getSimpleName() + "' by this FCS Endpoint.");
+                throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN, "Queries with queryType 'cql' do not support index/relation on '" + node.getClass().getSimpleName() + "' by this FCS Endpoint.");
             }
             sb.append('"');
             sb.append(tn.getTerm());
@@ -59,8 +54,7 @@ public class CQLToSolrConverter {
         } else if (node instanceof CQLOrNode || node instanceof CQLAndNode) {
             final CQLBooleanNode bn = (CQLBooleanNode) node;
             if (!bn.getModifiers().isEmpty()) {
-                throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN,
-                        "Queries with queryType 'cql' do not support modifiers on '" + node.getClass().getSimpleName() + "' by this FCS Endpoint.");
+                throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN, "Queries with queryType 'cql' do not support modifiers on '" + node.getClass().getSimpleName() + "' by this FCS Endpoint.");
             }
             sb.append("(");
             convertCQLtoSolrSingle(bn.getLeftOperand(), sb);
@@ -72,9 +66,7 @@ public class CQLToSolrConverter {
             convertCQLtoSolrSingle(bn.getRightOperand(), sb);
             sb.append(")");
         } else {
-            throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN,
-                    "Queries with queryType 'cql' do not support '" + node.getClass().getSimpleName() + "' by this FCS Endpoint.");
+            throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN, "Queries with queryType 'cql' do not support '" + node.getClass().getSimpleName() + "' by this FCS Endpoint.");
         }
     }
-
 }

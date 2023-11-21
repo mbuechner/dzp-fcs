@@ -20,19 +20,19 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.Getter;
 
-public class MyResults {
+public class Results {
+
     @Getter
     private final String pid;
     @Getter
     private final String query;
-    private final List<ResultEntry> results;
+    private final List<ResultsEntry> results;
     @Getter
     private final long total;
     @Getter
     private final long offset;
-    
 
-    public MyResults(String pid, String query, List<ResultEntry> results, long total, long offset) {
+    public Results(String pid, String query, List<ResultsEntry> results, long total, long offset) {
         this.pid = pid;
         this.query = query;
         this.results = new ArrayList<>(results);
@@ -40,22 +40,7 @@ public class MyResults {
         this.offset = offset;
     }
 
-    public List<ResultEntry> getResults() {
+    public List<ResultsEntry> getResults() {
         return new ArrayList<>(results);
-    }  
-
-    /**
-     * Minimal single result entry. Consisting of only a text and
-     * backlink to the result (if available).
-     */
-    public static class ResultEntry {
-        public String text;
-        public String landingpage;
-        public String pid;
-    
-        @Override
-        public String toString() {
-            return "ResultEntry [text=" + text + "]";
-        }
     }
 }

@@ -19,14 +19,11 @@ package de.ddb.labs.dzpfcs;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamWriter;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import de.ddb.labs.dzpfcs.searcher.MyResults;
+import de.ddb.labs.dzpfcs.searcher.Results;
 import eu.clarin.sru.server.SRUConstants;
 import eu.clarin.sru.server.SRUDiagnostic;
 import eu.clarin.sru.server.SRUDiagnosticList;
@@ -35,7 +32,7 @@ import eu.clarin.sru.server.SRURequest;
 import eu.clarin.sru.server.SRUSearchResultSet;
 import eu.clarin.sru.server.SRUServerConfig;
 import eu.clarin.sru.server.fcs.XMLStreamWriterHelper;
-import de.ddb.labs.dzpfcs.searcher.MyResults.ResultEntry;
+import de.ddb.labs.dzpfcs.searcher.ResultsEntry;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -82,13 +79,13 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
      * SRU Server Config, might be useful for response generation?
      */
     SRUServerConfig serverConfig = null;
-  
+
     /**
      * The SRU Request we generate our response for. Can be used to access
      * requested parameters.
      */
     SRURequest request = null;
-    
+
     /**
      * The list of Data View identifiers we need to generate our response for.
      */
@@ -97,8 +94,8 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
     /**
      * Results wrapper container for easy access to metadata (total count etc.)
      */
-    private MyResults results; // FIXME: change to correct result object
-    
+    private Results results; // FIXME: change to correct result object
+
     /**
      * The record cursor position for iterating through the result set.
      */
@@ -125,8 +122,7 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
      * responses for. May be empty but must not be <code>null</code>.
      * @param results the actual results from the search engine
      */
-    protected DzpSRUSearchResultSet(SRUServerConfig serverConfig, SRURequest request,
-            SRUDiagnosticList diagnostics, List<String> dataviews, MyResults results) {
+    protected DzpSRUSearchResultSet(SRUServerConfig serverConfig, SRURequest request, SRUDiagnosticList diagnostics, List<String> dataviews, Results results) {
         super(diagnostics);
         this.serverConfig = serverConfig;
         this.request = request;
@@ -158,8 +154,7 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
      */
     @Override
     public String getRecordSchemaIdentifier() {
-        return request.getRecordSchemaIdentifier() != null ? request.getRecordSchemaIdentifier()
-                : DzpConstants.CLARIN_FCS_RECORD_SCHEMA;
+        return request.getRecordSchemaIdentifier() != null ? request.getRecordSchemaIdentifier() : DzpConstants.CLARIN_FCS_RECORD_SCHEMA;
     }
 
     /**
@@ -176,11 +171,7 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
     public SRUDiagnostic getSurrogateDiagnostic() {
         if ((getRecordSchemaIdentifier() != null)
                 && !DzpConstants.CLARIN_FCS_RECORD_SCHEMA.equals(getRecordSchemaIdentifier())) {
-            return new SRUDiagnostic(
-                    SRUConstants.SRU_RECORD_NOT_AVAILABLE_IN_THIS_SCHEMA,
-                    getRecordSchemaIdentifier(),
-                    "Record is not available in record schema \""
-                    + getRecordSchemaIdentifier() + "\".");
+            return new SRUDiagnostic(SRUConstants.SRU_RECORD_NOT_AVAILABLE_IN_THIS_SCHEMA, getRecordSchemaIdentifier(), "Record is not available in record schema \"" + getRecordSchemaIdentifier() + "\".");
         }
 
         return null;
@@ -237,10 +228,10 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
 
     @Override
     public void writeRecord(XMLStreamWriter writer) throws XMLStreamException {
-        ResultEntry result = results.getResults().get(currentRecordCursor);
+        ResultsEntry result = results.getResults().get(currentRecordCursor);
 
         XMLStreamWriterHelper.writeStartResource(writer, results.getPid(), null);
-        XMLStreamWriterHelper.writeStartResourceFragment(writer, result.pid, result.landingpage);
+        XMLStreamWriterHelper.writeStartResourceFragment(writer, result.getId(), result.getDzpUrl(results.getQuery()));
 
         if (request != null && request.isQueryType(DzpConstants.SRU_QUERY_TYPE_LEX)) {
             writeLexHitsDataview(writer, result);
@@ -252,31 +243,33 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
         XMLStreamWriterHelper.writeEndResource(writer);
     }
 
-    protected void writeHitsDataview(XMLStreamWriter writer, ResultEntry result) throws XMLStreamException {
+    protected void writeHitsDataview(XMLStreamWriter writer, ResultsEntry result) throws XMLStreamException {
         XMLStreamWriterHelper.writeStartDataView(writer, DzpConstants.FCS_HITS_MIMETYPE);
         writer.setPrefix(DzpConstants.FCS_HITS_PREFIX, DzpConstants.FCS_HITS_NS);
         writer.writeStartElement(DzpConstants.FCS_HITS_NS, "Result");
         writer.writeNamespace(DzpConstants.FCS_HITS_PREFIX, DzpConstants.FCS_HITS_NS);
 
-        writeSolrHitsDataviewBytedXMLDoc(writer, result.text);
+        writeSolrHitsDataviewBytedXMLDoc(writer, result.getPlainpagefulltext().get(0));
 
         writer.writeEndElement(); // "Result" element
         XMLStreamWriterHelper.writeEndDataView(writer);
     }
 
     /**
-     * Source https://gist.github.com/Querela/825a084f94b30de88827050eddc8e361#file-sawsrusearchresultset-java-L137-L262
+     * Source
+     * https://gist.github.com/Querela/825a084f94b30de88827050eddc8e361#file-sawsrusearchresultset-java-L137-L262
+     *
      * @param writer
      * @param result
-     * @throws XMLStreamException 
+     * @throws XMLStreamException
      */
-    protected void writeLexHitsDataview(XMLStreamWriter writer, ResultEntry result) throws XMLStreamException {
+    protected void writeLexHitsDataview(XMLStreamWriter writer, ResultsEntry result) throws XMLStreamException {
         XMLStreamWriterHelper.writeStartDataView(writer, DzpConstants.FCS_HITS_MIMETYPE);
         writer.setPrefix(DzpConstants.FCS_HITS_PREFIX, DzpConstants.FCS_HITS_NS);
         writer.writeStartElement(DzpConstants.FCS_HITS_NS, "Result");
         writer.writeNamespace(DzpConstants.FCS_HITS_PREFIX, DzpConstants.FCS_HITS_NS);
 
-        writeSolrHitsDataviewBytedXMLDoc(writer, result.text);
+        writeSolrHitsDataviewBytedXMLDoc(writer, result.getPlainpagefulltext().get(0));
 
         writer.writeEndElement(); // "Result" element
         XMLStreamWriterHelper.writeEndDataView(writer);

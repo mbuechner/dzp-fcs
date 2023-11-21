@@ -16,7 +16,6 @@
  */
 package de.ddb.labs.dzpfcs;
 
-import de.ddb.labs.dzpfcs.helper.SolrDoc;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.Option;
@@ -35,15 +34,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
 import javax.servlet.ServletContext;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import de.ddb.labs.dzpfcs.searcher.MyResults;
+import de.ddb.labs.dzpfcs.searcher.Results;
 import eu.clarin.sru.server.CQLQueryParser;
 import eu.clarin.sru.server.SRUConfigException;
 import eu.clarin.sru.server.SRUConstants;
@@ -61,6 +57,8 @@ import eu.clarin.sru.server.fcs.SimpleEndpointSearchEngineBase;
 import eu.clarin.sru.server.fcs.parser.QueryParserException;
 import eu.clarin.sru.server.fcs.utils.SimpleEndpointDescriptionParser;
 import de.ddb.labs.dzpfcs.query.CQLToSolrConverter;
+import de.ddb.labs.dzpfcs.searcher.ResultsEntry;
+import eu.clarin.sru.server.SRUServer;
 import java.util.EnumSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -87,7 +85,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
             + "&hl=true"
             + "&hl.fl=plainpagefulltext"
             + "&hl.bs.type=SENTENCE"
-            + "&hl.fragsize=500"
+            + "&hl.fragsize=512"
             + "&hl.method=fastVector"
             + "&fl=id,paper_title,pagenumber"
             + "&df=plainpagefulltext"
@@ -104,10 +102,12 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
      * Endpoint Description with resources, capabilities etc.
      */
     private static EndpointDescription endpointDescription;
+
     /**
      * List of our endpoint's resources (identified by PID Strings)
      */
     private static List<String> pids;
+
     /**
      * Our default corpus if SRU requests do no explicitely request a resource
      * by PID with the <code>x-fcs-context</code> parameter. Must not be
@@ -154,8 +154,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
      * @throws SRUConfigException an error occurred during loading/reading the
      * <code>endpoint-description.xml</code> file
      */
-    protected EndpointDescription loadEndpointDescriptionFromURI(ServletContext context, Map<String, String> params)
-            throws SRUConfigException {
+    protected EndpointDescription loadEndpointDescriptionFromURI(ServletContext context, Map<String, String> params) throws SRUConfigException {
         try {
             URL url;
             String riu = params.get(RESOURCE_INVENTORY_URL);
@@ -225,9 +224,8 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
      * SRUServerConfig, SRUQueryParserRegistry.Builder, Map)
      */
     @Override
-    protected void doInit(ServletContext context, SRUServerConfig config,
-            SRUQueryParserRegistry.Builder queryParsersBuilder, Map<String, String> params)
-            throws SRUConfigException {
+    protected void doInit(ServletContext context, SRUServerConfig config, SRUQueryParserRegistry.Builder queryParsersBuilder, Map<String, String> params) throws SRUConfigException {
+
         LOGGER.info("SRUServlet::doInit {}", config.getPort());
 
         /* register custom query parsers */
@@ -253,7 +251,6 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
             throw new SRUConfigException("Parameter 'DEFAULT_RESOURCE_PID' contains unknown resource pid!");
         }
 
-        /* TODO: initialize searcher if globally? */
         // configure JsonPath to use Jackson
         Configuration.setDefaults(new Configuration.Defaults() {
 
@@ -276,9 +273,9 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
             }
         });
 
-        this.dispatcher = new Dispatcher(Executors.newFixedThreadPool(64));
-        dispatcher.setMaxRequests(64);
-        dispatcher.setMaxRequestsPerHost(64);
+        this.dispatcher = new Dispatcher(Executors.newFixedThreadPool(128));
+        dispatcher.setMaxRequests(16);
+        dispatcher.setMaxRequestsPerHost(16);
 
         this.client = new OkHttpClient().newBuilder()
                 .followRedirects(false)
@@ -311,11 +308,11 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         final String pid = checkPid(pids);
         LOGGER.debug("Search restricted to first PID: {}", pid);
 
-        List<String> dataviews = parseDataViews(request, diagnostics, pid);
+        final List<String> dataviews = parseDataViews(request, diagnostics, pid);
         LOGGER.debug("Search requested dataviews: {}", dataviews);
 
-        int startRecord = ((request.getStartRecord() < 1) ? 1 : request.getStartRecord()) - 1;
-        int maximumRecords = request.getMaximumRecords();
+        final int startRecord = ((request.getStartRecord() < 1) ? 1 : request.getStartRecord()) - 1;
+        final int maximumRecords = request.getMaximumRecords();
 
         // check for correct startRecord
         final String apiQuery01 = DDB_API
@@ -328,7 +325,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
                 .url(apiQuery01)
                 .build();
 
-        try (Response response01 = client.newCall(apiRequest01).execute()) {
+        try (final Response response01 = client.newCall(apiRequest01).execute()) {
             json = response01.body().string();
             if (!response01.isSuccessful()) {
                 throw new Exception("Response code of DDB-API is " + response01.code() + ". Request URL: " + response01.request().url().toString());
@@ -340,8 +337,8 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         final ReadContext ctx01 = JsonPath.parse(json);
         final Integer numFound = ctx01.read("$.response.numFound", Integer.class);
 
-        if (startRecord > numFound) {
-            throw new SRUException(SRUConstants.SRU_RESPONSE_POSITION_OUT_OF_RANGE);
+        if (startRecord >= numFound) {
+            throw new SRUException(SRUConstants.SRU_FIRST_RECORD_POSITION_OUT_OF_RANGE);
         }
 
         // query results
@@ -355,7 +352,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
                 .url(apiQuery02)
                 .build();
 
-        try (Response response02 = client.newCall(apiRequest02).execute()) {
+        try (final Response response02 = client.newCall(apiRequest02).execute()) {
             json = response02.body().string();
             if (!response02.isSuccessful()) {
                 throw new Exception("Response code of DDB-API is " + response02.code() + ". Request URL: " + response02.request().url().toString());
@@ -366,10 +363,10 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
 
         final ReadContext ctx02 = JsonPath.parse(json);
 
-        final List<SolrDoc> docList = ctx02.read("$.response.docs[*]", new TypeRef<List<SolrDoc>>() {
+        final List<ResultsEntry> docList = ctx02.read("$.response.docs[*]", new TypeRef<List<ResultsEntry>>() {
         });
 
-        for (SolrDoc doc : docList) {
+        for (ResultsEntry doc : docList) {
             if (doc.getId() == null || doc.getId().isBlank()) {
                 continue;
             }
@@ -380,17 +377,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         }
 
         /* start search (query = myQuery, offset = startRecord, limit = maximumRecords) */
-        final MyResults results = new MyResults(pid, myQuery, new ArrayList<MyResults.ResultEntry>() {
-            {
-                for (SolrDoc doc : docList) {
-                    MyResults.ResultEntry entry = new MyResults.ResultEntry();
-                    entry.pid = doc.getId();
-                    entry.landingpage = doc.getDzpUrl(myQuery);
-                    entry.text = doc.getPlainpagefulltext().get(0);
-                    add(entry);
-                }
-            }
-        }, numFound, startRecord);
+        final Results results = new Results(pid, myQuery, docList, numFound, startRecord);
 
         if (results == null) {
             throw new SRUException(SRUConstants.SRU_GENERAL_SYSTEM_ERROR, "Error in Searcher");
@@ -424,20 +411,13 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
                 myQuery = CQLToSolrConverter.convertCQLtoSolrQuery(q.getParsedQuery());
                 LOGGER.debug("Converted Solr: {}", myQuery);
             } catch (QueryParserException e) {
-                throw new SRUException(
-                        SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN,
-                        "Converting query with queryType 'cql' to MYQUERY failed.",
-                        e);
+                throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN, "Converting query with queryType 'cql' to MYQUERY failed.", e);
             }
         } else {
             /*
              * Got something else we don't support. Send error ...
              */
-            throw new SRUException(
-                    SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN,
-                    "Queries with queryType '"
-                    + request.getQueryType()
-                    + "' are not supported by this FCS Endpoint.");
+            throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN, "Queries with queryType '" + request.getQueryType() + "' are not supported by this FCS Endpoint.");
         }
         return myQuery;
     }
@@ -507,10 +487,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         for (String pid : pids) {
             if (!DzpEndpointSearchEngine.pids.contains(pid)) {
                 // allow only valid resources that can be queried by CQL
-                diagnostics.addDiagnostic(
-                        Constants.FCS_DIAGNOSTIC_PERSISTENT_IDENTIFIER_INVALID,
-                        pid,
-                        "Resource PID for search is not valid or can not be queried by FCS/CQL!");
+                diagnostics.addDiagnostic(Constants.FCS_DIAGNOSTIC_PERSISTENT_IDENTIFIER_INVALID, pid, "Resource PID for search is not valid or can not be queried by FCS/CQL!");
             } else {
                 knownPids.add(pid);
             }
@@ -518,10 +495,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         if (knownPids.isEmpty()) {
             // if search was restricted to resources but all were invalid, then do we fail?
             // or do we adjust to our default corpus?
-            throw new SRUException(
-                    SRUConstants.SRU_UNSUPPORTED_PARAMETER_VALUE,
-                    "All values passed to '" + DzpConstants.X_FCS_CONTEXT_KEY
-                    + "' were not valid PIDs or can not be queried by FCS/CQL.");
+            throw new SRUException(SRUConstants.SRU_UNSUPPORTED_PARAMETER_VALUE, "All values passed to '" + DzpConstants.X_FCS_CONTEXT_KEY + "' were not valid PIDs or can not be queried by FCS/CQL.");
         }
 
         return knownPids;
@@ -551,10 +525,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         // multiple PIDs should usually not happen)
         final String pid;
         if (pids.size() > 1) {
-            throw new SRUException(
-                    SRUConstants.SRU_UNSUPPORTED_PARAMETER_VALUE,
-                    "Parameter '" + DzpConstants.X_FCS_CONTEXT_KEY
-                    + "' received multiple PIDs. Endpoint only supports a single PIDs for querying by CQL/FCS-QL/LexCQL.");
+            throw new SRUException(SRUConstants.SRU_UNSUPPORTED_PARAMETER_VALUE, "Parameter '" + DzpConstants.X_FCS_CONTEXT_KEY + "' received multiple PIDs. Endpoint only supports a single PIDs for querying by CQL/FCS-QL/LexCQL.");
         } else if (pids.isEmpty()) {
             pid = defaultCorpusId;
             LOGGER.debug("Falling back to default resource: {}", pid);
@@ -591,7 +562,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         if (request != null) {
             for (String erd : request.getExtraRequestDataNames()) {
                 if (DzpConstants.X_FCS_DATAVIEWS_KEY.equals(erd)) {
-                    String dvs = request.getExtraRequestData(DzpConstants.X_FCS_DATAVIEWS_KEY);
+                    final String dvs = request.getExtraRequestData(DzpConstants.X_FCS_DATAVIEWS_KEY);
                     extraDataviews = new ArrayList<>(
                             Arrays.asList(dvs.split(DzpConstants.X_FCS_DATAVIEWS_SEPARATOR)));
                     break;
@@ -602,17 +573,13 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
             return new ArrayList<>();
         }
 
-        final Set<String> resourceDataViews = endpointDescription.getResourceList(pid).get(0).getAvailableDataViews().stream()
-                .map(DataView::getIdentifier).collect(Collectors.toSet());
+        final Set<String> resourceDataViews = endpointDescription.getResourceList(pid).get(0).getAvailableDataViews().stream().map(DataView::getIdentifier).collect(Collectors.toSet());
 
         final List<String> allowedDataViews = new ArrayList<>();
         for (String dv : extraDataviews) {
             if (!resourceDataViews.contains(dv)) {
                 // allow only valid dataviews for this resource that can be requested
-                diagnostics.addDiagnostic(
-                        Constants.FCS_DIAGNOSTIC_PERSISTENT_IDENTIFIER_INVALID,
-                        pid,
-                        "DataViews with identifier '" + dv + "' for resource PID='" + pid + "' is not valid!");
+                diagnostics.addDiagnostic(Constants.FCS_DIAGNOSTIC_PERSISTENT_IDENTIFIER_INVALID, pid, "DataViews with identifier '" + dv + "' for resource PID='" + pid + "' is not valid!");
             } else {
                 allowedDataViews.add(dv);
             }
