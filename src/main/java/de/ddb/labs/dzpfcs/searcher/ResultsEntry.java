@@ -39,8 +39,8 @@ public class ResultsEntry {
 
         for (String v : ppft) {
             String t = StringEscapeUtils.escapeXml11(v);
-            t = t.replaceAll("&lt;hit&gt;", "<hit>");
-            t = t.replaceAll("&lt;/hit&gt;", "</hit>");
+            t = t.replaceAll("&lt;Hit&gt;", "<Hit>");
+            t = t.replaceAll("&lt;/Hit&gt;", "</Hit>");
 
             plainpagefulltext.add(t);
         }

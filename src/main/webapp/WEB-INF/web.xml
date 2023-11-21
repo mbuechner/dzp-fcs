@@ -56,7 +56,7 @@
         <!-- mandatory SRU information -->
         <init-param>
             <param-name>eu.clarin.sru.server.database</param-name>
-            <param-value>FIXME-MANDATORY</param-value>
+            <param-value>/sru/ddb/dzp</param-value>
         </init-param>
 
         <init-param>

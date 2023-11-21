@@ -354,7 +354,7 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
                         return;
                     }
                     try {
-                        if (qName.equals("hit")) {
+                        if (qName.equals("Hit")) {
                             writer.writeStartElement(DzpConstants.FCS_HITS_NS, qName);
                         } else {
                             writer.writeStartElement(qName);

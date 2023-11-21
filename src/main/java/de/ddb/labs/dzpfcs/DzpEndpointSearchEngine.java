@@ -84,16 +84,16 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
     private final Dotenv dotenv = Dotenv.load();
 
     private final String dzp_api = dotenv.get("DZP_SOLR_ENDPOINT")
-            + "?q={{query}}"
-            + "&hl=true"
-            + "&hl.fl=plainpagefulltext"
-            + "&hl.bs.type=SENTENCE"
-            + "&hl.fragsize=512"
-            + "&hl.method=fastVector"
+            + "?df=plainpagefulltext"
             + "&fl=id,paper_title,pagenumber"
-            + "&df=plainpagefulltext"
-            + "&hl.simple.pre=<hit>"
-            + "&hl.simple.post=</hit>"
+            + "&hl.bs.separator=."
+            + "&hl.bs.type=SENTENCE"
+            + "&hl.fl=plainpagefulltext"
+            + "&hl.method=unified"
+            + "&hl.simple.post=</Hit>"
+            + "&hl.simple.pre=<Hit>"
+            + "&hl=true"
+            + "&q={{query}}"
             + "&rows={{rows}}"
             + "&start={{start}}";
 
