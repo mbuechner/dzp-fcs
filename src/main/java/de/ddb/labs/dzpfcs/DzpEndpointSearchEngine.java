@@ -317,29 +317,56 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         int startRecord = ((request.getStartRecord() < 1) ? 1 : request.getStartRecord()) - 1;
         int maximumRecords = request.getMaximumRecords();
 
-        final String apiQuery = DDB_API
+        // check for correct startRecord
+        final String apiQuery01 = DDB_API
                 .replace("{{query}}", myQuery)
-                .replace("{{rows}}", Integer.toString(maximumRecords))
-                .replace("{{start}}", Integer.toString(startRecord));
+                .replace("{{rows}}", Integer.toString(0))
+                .replace("{{start}}", Integer.toString(0));
 
         String json = "";
-        final Request apiRequest = new Request.Builder()
-                .url(apiQuery)
+        final Request apiRequest01 = new Request.Builder()
+                .url(apiQuery01)
                 .build();
 
-        try (Response response = client.newCall(apiRequest).execute()) {
-            json = response.body().string();
-            if (!response.isSuccessful()) {
-                throw new Exception("Response code of DDB-API is " + response.code() + ". Request URL: " + response.request().url().toString());
+        try (Response response01 = client.newCall(apiRequest01).execute()) {
+            json = response01.body().string();
+            if (!response01.isSuccessful()) {
+                throw new Exception("Response code of DDB-API is " + response01.code() + ". Request URL: " + response01.request().url().toString());
             }
         } catch (Exception e) {
             throw new SRUException(SRUConstants.SRU_GENERAL_SYSTEM_ERROR, e.getMessage());
         }
 
-        final ReadContext ctx = JsonPath.parse(json);
+        final ReadContext ctx01 = JsonPath.parse(json);
+        final Integer numFound = ctx01.read("$.response.numFound", Integer.class);
 
-        final Integer numFound = ctx.read("$.response.numFound", Integer.class);
-        final List<SolrDoc> docList = ctx.read("$.response.docs[*]", new TypeRef<List<SolrDoc>>() {
+        if (startRecord > numFound) {
+            throw new SRUException(SRUConstants.SRU_RESPONSE_POSITION_OUT_OF_RANGE);
+        }
+
+        // query results
+        final String apiQuery02 = DDB_API
+                .replace("{{query}}", myQuery)
+                .replace("{{rows}}", Integer.toString(maximumRecords))
+                .replace("{{start}}", Integer.toString(startRecord));
+
+        json = "";
+        final Request apiRequest02 = new Request.Builder()
+                .url(apiQuery02)
+                .build();
+
+        try (Response response02 = client.newCall(apiRequest02).execute()) {
+            json = response02.body().string();
+            if (!response02.isSuccessful()) {
+                throw new Exception("Response code of DDB-API is " + response02.code() + ". Request URL: " + response02.request().url().toString());
+            }
+        } catch (Exception e) {
+            throw new SRUException(SRUConstants.SRU_GENERAL_SYSTEM_ERROR, e.getMessage());
+        }
+
+        final ReadContext ctx02 = JsonPath.parse(json);
+
+        final List<SolrDoc> docList = ctx02.read("$.response.docs[*]", new TypeRef<List<SolrDoc>>() {
         });
 
         for (SolrDoc doc : docList) {
@@ -347,7 +374,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
                 continue;
             }
             final String jsonQuery = "$.highlighting['" + doc.getId() + "'].plainpagefulltext[*]";
-            final List<String> list = ctx.read(jsonQuery, new TypeRef<List<String>>() {
+            final List<String> list = ctx02.read(jsonQuery, new TypeRef<List<String>>() {
             });
             doc.setPlainpagefulltext(list);
         }
