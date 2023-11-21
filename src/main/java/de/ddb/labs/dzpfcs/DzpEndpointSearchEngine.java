@@ -83,7 +83,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
 
     private final Dotenv dotenv = Dotenv.load();
 
-    private final String dzp_api = dotenv.get("DZP_SOLR_ENDPOINT")
+    private final String dzp_api = dotenv.get("DZP_FCS_SOLR_ENDPOINT")
             + "?df=plainpagefulltext"
             + "&fl=id,paper_title,pagenumber"
             + "&hl.bs.separator=."
@@ -254,7 +254,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
             throw new SRUConfigException("Parameter 'DEFAULT_RESOURCE_PID' contains unknown resource pid!");
         }
 
-        LOGGER.info("DZP Solr Endpoint is " + dotenv.get("DZP_SOLR_ENDPOINT"));
+        LOGGER.info("DZP Solr Endpoint is " + dotenv.get("DZP_FCS_SOLR_ENDPOINT"));
 
         // configure JsonPath to use Jackson
         Configuration.setDefaults(new Configuration.Defaults() {
