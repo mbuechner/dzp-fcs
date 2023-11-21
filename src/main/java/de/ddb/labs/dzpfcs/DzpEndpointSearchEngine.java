@@ -337,7 +337,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         final ReadContext ctx01 = JsonPath.parse(json);
         final Integer numFound = ctx01.read("$.response.numFound", Integer.class);
 
-        if (startRecord >= numFound) {
+        if (startRecord > numFound) {
             throw new SRUException(SRUConstants.SRU_FIRST_RECORD_POSITION_OUT_OF_RANGE);
         }
 
