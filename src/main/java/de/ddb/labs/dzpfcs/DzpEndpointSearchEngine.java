@@ -59,6 +59,7 @@ import eu.clarin.sru.server.fcs.utils.SimpleEndpointDescriptionParser;
 import de.ddb.labs.dzpfcs.query.CQLToSolrConverter;
 import de.ddb.labs.dzpfcs.searcher.ResultsEntry;
 import eu.clarin.sru.server.SRUServer;
+import io.github.cdimascio.dotenv.Dotenv;
 import java.util.EnumSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -80,7 +81,9 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
     // set in `src/main/webapp/WEB-INF/web.xml` if you want to package a custom endpoint-description.xml file at another location
     private static final String RESOURCE_INVENTORY_URL = "de.ddb.labs.dzpfcs.resourceInventoryURL";
 
-    private static final String DDB_API = "https://api.deutsche-digitale-bibliothek.de/search/index/newspaper-issues/select"
+    private final Dotenv dotenv = Dotenv.load();
+
+    private final String dzp_api = dotenv.get("DZP_SOLR_ENDPOINT")
             + "?q={{query}}"
             + "&hl=true"
             + "&hl.fl=plainpagefulltext"
@@ -251,6 +254,8 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
             throw new SRUConfigException("Parameter 'DEFAULT_RESOURCE_PID' contains unknown resource pid!");
         }
 
+        LOGGER.info("DZP Solr Endpoint is " + dotenv.get("DZP_SOLR_ENDPOINT"));
+
         // configure JsonPath to use Jackson
         Configuration.setDefaults(new Configuration.Defaults() {
 
@@ -315,7 +320,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         final int maximumRecords = request.getMaximumRecords();
 
         // check for correct startRecord
-        final String apiQuery01 = DDB_API
+        final String apiQuery01 = dzp_api
                 .replace("{{query}}", myQuery)
                 .replace("{{rows}}", Integer.toString(0))
                 .replace("{{start}}", Integer.toString(0));
@@ -342,7 +347,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         }
 
         // query results
-        final String apiQuery02 = DDB_API
+        final String apiQuery02 = dzp_api
                 .replace("{{query}}", myQuery)
                 .replace("{{rows}}", Integer.toString(maximumRecords))
                 .replace("{{start}}", Integer.toString(startRecord));
