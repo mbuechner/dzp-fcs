@@ -8,7 +8,9 @@ RUN sed -i 's#<url-pattern>/\*</url-pattern>#<url-pattern>${DZP_FCS_PATH_PREFIX}
 FROM bitnami/tomcat:9.0
 MAINTAINER Michael Büchner <m.buechner@dnb.de>
 COPY --from=MAVEN_CHAIN /tmp/target/dzp-fcs.war /opt/bitnami/tomcat/webapps/ROOT.war
-RUN { \
+USER root
+RUN apt-get update && apt-get -y install curl && \
+	{ \
 	echo ""; \
 	echo "# Setting variable url-pattern in web.xml"; \
 	echo "if [ -z \"\${DZP_FCS_PATH_PREFIX}\" ]; then"; \
