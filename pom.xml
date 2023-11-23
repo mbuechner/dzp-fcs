@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>de.ddb.labs</groupId>
     <artifactId>dzp-fcs</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.0</version>
     <packaging>war</packaging>
     <name>German newspaper portal SRU/CQL FCS 2.0 Endpoint</name>
     <description>SRU/CQL FCS 2.0 FCS Endpoint Service for the German newspaper portal</description>
