@@ -10,7 +10,7 @@ The following searches are given as examples.
 
 * Search for ["Berlin"](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query=Berlin)
 * Search for ["Berlin ist schön"](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query="Berlin%20ist%20schön")
-* Search for ["Berlin" and "Hamburg"](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query="Berlin%20AND%20Hamburg")
+* Search for ["Berlin" and "Hamburg"](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query=Berlin%20AND%20Hamburg)
 
 The endpoint is used for:
 
