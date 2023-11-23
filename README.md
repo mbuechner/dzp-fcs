@@ -1,167 +1,64 @@
-# Your Shiny ✨ New FCS Endpoint ✨
+# SRU/CQL FCS 2.0 Endpoint for German Newspaper Portal
 
+This application implements a [Federated Content Search (FCS)](https://www.clarin.eu/content/federated-content-search-clarin-fcs-technical-details) endpoint for the [German Newspaper Portal](https://www.deutsche-digitale-bibliothek.de/newspaper).
 
-Please check the generated source files for any occurrence of `TODO`, `FIXME` and `NOTE` and adjust accordingly.
+The aim of Federated Content Search is to enable a content search via distributed resources. The [German Digital Library](https://www.deutsche-digitale-bibliothek.de/) provides the German Newspaper Portal with a searchable corpus for this purpose.
 
-The generated endpoint sources should work out-of-the-box but do not really implement any translation layer for a search engine or perform an actual search. All search requests to CQL will just respond with two static results.
+The endpoint is published at the following URL: https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs
 
+The following searches are given as examples.
 
+* Search for ["Berlin"](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query=Berlin)
+* Search for ["Berlin ist schön"](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query="Berlin%20ist%20schön")
+* Search for ["Berlin" and "Hamburg"](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query="Berlin%20AND%20Hamburg")
 
-* [`Dockerfile`](Dockerfile)  
-  Multi-stage Maven build and slim Jetty runtime image.
-* [`docker-compose.yml`](docker-compose.yml)
-* [`pom.xml`](pom.xml)  
-  Java dependencies for use with Maven.
+The endpoint is used for:
 
+* Text+: [https://fcs.text-plus.org/?&query="Berlin ist schön"](https://fcs.text-plus.org/?&query="Berlin%20ist%20schön")
+* Text+: [https://text-plus.org/en/](https://text-plus.org/en/) (Search → Content)
+* SAW Leipzig: https://tppssi-demo.saw-leipzig.de/ (Search in content)
+* etc.
 
-* [`id.group.fcs.dzp.DzpConstants`](src/main/java/id/group/fcs/dzp/DzpConstants.java)  
-  Constants for accessing FCS request parameters and output generation. Can be used to store own constants.
-* [`id.group.fcs.dzp.DzpEndpointSearchEngine`](src/main/java/id/group/fcs/dzp/DzpEndpointSearchEngine.java)  
-  The glue between the FCS and our own search engine. It is the actual implementation that handles SRU/FCS explain and search requests. Here, we load and initialize our FCS endpoint.
-  It will perform searches with our own search engine (here only with static results), and wrap results into the appropriate output (`id.group.fcs.dzp.DzpSRUSearchResultSet`). 
-* [`id.group.fcs.dzp.DzpSRUSearchResultSet`](src/main/java/id/group/fcs/dzp/DzpSRUSearchResultSet.java)  
-  FCS Data View output generation. Writes minimal, basic HITS Data View. Here custom output can be generated from the result wrapper `id.group.fcs.dzp.searcher.MyResults`.
-* [`id.group.fcs.dzp.searcher.MyResults`](src/main/java/id/group/fcs/dzp/searcher/MyResults.java)  
-  Lightweight wrapper around own results that allows access to results counts and result items per index.
-* [`id.group.fcs.dzp.query.CQLtoMYQUERYConverter`](src/main/java/id/group/fcs/dzp/query/CQLtoMYQUERYConverter.java)  
-  Query converion from simple CQL to demo `MYQUERY` as example for own query adapters.
+## Implementation
+This Java servlet was implemented using the [FCS Endpoint Archetype](https://github.com/clarin-eric/fcs-endpoint-archetype). Further information can be found there.
 
-
-Only the [`log4j2.xml`](src/main/resources/log4j2.xml) is important in case of changing logging settings.
-
-
-Here are the endpoint configuration:
-
-* [`endpoint-description.xml`](src/main/webapp/WEB-INF/endpoint-description.xml)  
-  FCS Endpoint Description, like resources, capabilities etc.
-* [`jetty-env.xml`](src/main/webapp/WEB-INF/jetty-env.xml)  
-  Jetty environment variable settings.
-* [`sru-server-config.xml`](src/main/webapp/WEB-INF/sru-server-config.xml)  
-  SRU Endpoint Settings.
-* [`web.xml`](src/main/webapp/WEB-INF/web.xml)  
-  Java Servlet configuration, SRU/FCS endpoint settings.
-
-
-Build [`fcs.war`](target/fcs.war) file for webapp deployment:
+## Build
+The build automation tool "Maven" can be used to create the Web Application Archive (WAR). The following command, executed in the folder containing the `pom.xml` file, creates a publishable WAR file.
 
 ```bash
 mvn [clean] package
 ```
 
+## Docker
+Yes, there's a docker container for this application available at GitHub.
 
-Some endpoint/resource configurations are being set using environment variables. See [`jetty-env.xml`](src/main/webapp/WEB-INF/jetty-env.xml) for details. You can set default values there.
-For production use, you can set values in the .env file that is then loaded with the `docker-compose.yml` configuration.
+https://github.com/mbuechner/dzp-fcs/pkgs/container/dzp-fcs
 
+### Container build
 
-The archetype includes both a [`Dockerfile`](Dockerfile) and a [`docker-compose.yml`](docker-compose.yml) configuration.
-The `Dockerfile` can be used to build a simple Jetty image to run the FCS endpoint. It still needs to be configured with port-mappings, environment variables etc. The `docker-compose.yml` file bundles all those runtime configurations to allow easier deployment. You still need to create an `.env` file or set the environment variables if you use the generated code as is.
-
-Using docker:
-
+1.  Checkout GitHub repository:  
 ```bash
-# build the image and label it "fcs-endpoint"
-docker build -t fcs-endpoint .
-
-# run the image in the foreground (to see logs and interact with it) with environment variables from .env file
-docker run --rm -it --name fcs-endpoint -p 8081:8080 --env-file .env fcs-endpoint
-
-# or run in background with automatic restart
-docker run -d --restart=unless-stopped --name fcs-endpoint -p 8081:8080 --env-file .env fcs-endpoint
+git clone https://github.com/mbuechner/dzp-fcs
 ```
-
-Using docker-compose:
-
+3.  Go into folder:
 ```bash
-# build
-docker-compose build
-# run
-docker-compose up [-d]
+cd dzp-fcs
 ```
-
-
-Uses Jetty 10. See [`pom.xml`](pom.xml) --> plugin `jetty-maven-plugin`.
-
+4.  Run
 ```bash
-mvn [package] jetty:run-war
+docker build -t dzp-fcs .
 ```
-
-NOTE: `jetty:run-war` uses built war file in [`target/`](target/) folder.
-
-
-The search request for _something_ in CQL/BASIC-Search:
-
+5.  Start container with:
 ```bash
-curl '127.0.0.1:8080?operation=searchRetrieve&queryType=cql&query=something&x-indent-response=1'
-# or port 8081 if run with docker
+docker run -p 8080:8080 -P -e "TOMCAT_PASSWORD=verysecret" dzp-fcs
 ```
-
-should respond with:
-
-<details>
-<summary>Response</summary>
-
-```xml
-<?xml version='1.0' encoding='utf-8'?>
-<sruResponse:searchRetrieveResponse xmlns:sruResponse="http://docs.oasis-open.org/ns/search-ws/sruResponse">
- <sruResponse:version>2.0</sruResponse:version>
- <sruResponse:numberOfRecords>1</sruResponse:numberOfRecords>
- <sruResponse:records>
-  <sruResponse:record>
-   <sruResponse:recordSchema>http://clarin.eu/fcs/resource</sruResponse:recordSchema>
-   <sruResponse:recordXMLEscaping>xml</sruResponse:recordXMLEscaping>
-   <sruResponse:recordData>
-    <fcs:Resource xmlns:fcs="http://clarin.eu/fcs/resource" pid="FIXME:DEFAULT_RESOURCE_PID">
-     <fcs:ResourceFragment>
-      <fcs:DataView type="application/x-clarin-fcs-hits+xml">
-       <hits:Result xmlns:hits="http://clarin.eu/fcs/dataview/hits">
-        <hits:Hit>abc</hits:Hit>
-       </hits:Result>
-      </fcs:DataView>
-     </fcs:ResourceFragment>
-    </fcs:Resource>
-   </sruResponse:recordData>
-   <sruResponse:recordPosition>1</sruResponse:recordPosition>
-  </sruResponse:record>
-  <sruResponse:record>
-   <sruResponse:recordSchema>http://clarin.eu/fcs/resource</sruResponse:recordSchema>
-   <sruResponse:recordXMLEscaping>xml</sruResponse:recordXMLEscaping>
-   <sruResponse:recordData>
-    <fcs:Resource xmlns:fcs="http://clarin.eu/fcs/resource" pid="FIXME:DEFAULT_RESOURCE_PID">
-     <fcs:ResourceFragment>
-      <fcs:DataView type="application/x-clarin-fcs-hits+xml">
-       <hits:Result xmlns:hits="http://clarin.eu/fcs/dataview/hits">
-        <hits:Hit>def</hits:Hit>
-       </hits:Result>
-      </fcs:DataView>
-     </fcs:ResourceFragment>
-    </fcs:Resource>
-   </sruResponse:recordData>
-   <sruResponse:recordPosition>2</sruResponse:recordPosition>
-  </sruResponse:record>
- </sruResponse:records>
- <sruResponse:echoedSearchRetrieveRequest>
-  <sruResponse:version>2.0</sruResponse:version>
-  <sruResponse:query>something</sruResponse:query>
-  <sruResponse:xQuery xmlns="http://docs.oasis-open.org/ns/search-ws/xcql">
-   <searchClause>
-    <index>cql.serverChoice</index>
-    <relation>
-     <value>=</value>
-    </relation>
-    <term>something</term>
-   </searchClause>
-  </sruResponse:xQuery>
-  <sruResponse:startRecord>1</sruResponse:startRecord>
- </sruResponse:echoedSearchRetrieveRequest>
-</sruResponse:searchRetrieveResponse>
-```
-
-</details>
+6.  Open browser:  [http://localhost:8080/](http://localhost:8080/)
 
 
-Add default debug setting `Attach by Process ID`, then start the jetty server with the following command, and start debugging in VSCode while it waits to attach.
+### Environment variables
 
-```bash
-# export configuration values, see section #Configuration
-MAVEN_OPTS="-Xdebug -Xnoagent -Djava.compiler=NONE -agentlib:jdwp=transport=dt_socket,server=y,address=5005" mvn jetty:run-war
-```
+| Variable              | Description                                                                                                  | Default value                                                                    |
+|-----------------------|--------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|
+| TOMCAT_PASSWORD       | Apache Tomcat password.<br/>See [Apache Tomcat packaged by Bitnami](https://hub.docker.com/r/bitnami/tomcat) | No default                                                                       |
+| DZP_FCS_SOLR_ENDPOINT | Endpoint url for the Solr search engine of German Newspaper Portal                                           | https://api.deutsche-digitale-bibliothek.de/search/index/newspaper-issues/select |
+| DZP_FCS_PATH_PREFIX   | Path prefix (if you change it to `/myapp/*`, the servlet will serve under `http://localhost:8080/myapp/`     | `/*`                                                                             |
