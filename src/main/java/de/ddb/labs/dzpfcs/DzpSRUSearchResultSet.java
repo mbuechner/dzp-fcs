@@ -285,8 +285,7 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
      * @param text
      * @throws XMLStreamException
      */
-    protected static void writeSolrHitsDataviewBytedXMLDoc(XMLStreamWriter writer, String text)
-            throws XMLStreamException {
+    protected static void writeSolrHitsDataviewBytedXMLDoc(XMLStreamWriter writer, String text) throws XMLStreamException {
         final String marker = "writeSolrHitsDataviewBytedXMLDoc";
 
         try {
@@ -338,7 +337,7 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
                     }
                 }
 
-                private Map<String, String> prefixes = new HashMap<>();
+                private final Map<String, String> prefixes = new HashMap<>();
 
                 @Override
                 public void startPrefixMapping(String prefix, String uri) throws SAXException {

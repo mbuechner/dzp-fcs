@@ -286,7 +286,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
                 .followRedirects(false)
                 .followSslRedirects(false)
                 .dispatcher(dispatcher)
-                .connectTimeout(180, TimeUnit.SECONDS)
+                .readTimeout(3, TimeUnit.MINUTES)
                 .build();
     }
 
