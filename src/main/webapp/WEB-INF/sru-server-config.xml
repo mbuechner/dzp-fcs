@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<endpoint-config xmlns="http://www.clarin.eu/sru-server/1.0/">
+<endpoint-config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://www.clarin.eu/sru-server/1.0/ ../../resources/sru-server-config.xsd" xmlns="http://www.clarin.eu/sru-server/1.0/">
     <databaseInfo>
-        <title xml:lang="en" primary="false">German newspaper portal SRU/CQL FCS 2.0 Endpoint</title>
-        <title xml:lang="de" primary="true">Deutsches Zeitungsportal SRU/CQL FCS 2.0 Endpunkt</title>
+        <title xml:lang="en" primary="false">SRU/CQL FCS 2.0 Endpoint for German Newspaper Portal</title>
+        <title xml:lang="de" primary="true">SRU/CQL FCS 2.0 Endpunkt für das Deutsches Zeitungsportal</title>
         <description xml:lang="en" primary="false">The German newspaper portal makes digitized historical newspapers from four centuries available online. Free of charge and without access restrictions.</description>
         <description xml:lang="de" primary="true">Das deutsche Zeitungsportal macht digitalisierte historische Zeitungen aus vier Jahrhunderten online verfügbar. Kostenfrei und ohne Zugangsbeschränkungen.</description>
         <author xml:lang="en" primary="false">Michael Büchner, Deutsche Digitale Bibliothek</author>

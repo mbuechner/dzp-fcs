@@ -11,17 +11,17 @@
     </Appenders>
 
     <Loggers>
-        <Logger name="de.ddb.labs.dzpfcs" level="info" additivity="false">
+        <Logger name="de.ddb.labs.dzpfcs" level="INFO" additivity="false">
             <AppenderRef ref="Console" />
         </Logger>
-        <Logger name="eu.clarin.sru.server.fcs.utils.SimpleEndpointDescriptionParser" level="info" additivity="false">
+        <Logger name="eu.clarin.sru.server.fcs.utils.SimpleEndpointDescriptionParser" level="INFO" additivity="false">
             <AppenderRef ref="Console" />
         </Logger>
-        <Logger name="eu.clarin.sru.server" level="info" additivity="false">
+        <Logger name="eu.clarin.sru.server" level="INFO" additivity="false">
             <AppenderRef ref="Console" />
         </Logger>
         <!-- LOG everything at INFO level -->
-        <Root level="info">
+        <Root level="INFO">
             <AppenderRef ref="Console" />
         </Root>
     </Loggers>

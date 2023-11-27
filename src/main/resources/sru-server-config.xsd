@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.clarin.eu/sru-server/1.0/"
+  targetNamespace="http://www.clarin.eu/sru-server/1.0/"
+  elementFormDefault="qualified">
+
+  <xsd:import namespace="http://www.w3.org/XML/1998/namespace"
+    schemaLocation="xml.xsd" />
+
+  <xsd:element name="endpoint-config">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element ref="databaseInfo" />
+        <xsd:element ref="indexInfo" />
+        <xsd:element ref="schemaInfo" />
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="databaseInfo">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="title" type="text" maxOccurs="unbounded" />
+        <xsd:element name="description" type="text" minOccurs="0" maxOccurs="unbounded" />
+        <xsd:element name="author" type="text" minOccurs="0" maxOccurs="unbounded" />
+        <xsd:element name="extent" type="text" minOccurs="0" maxOccurs="unbounded" />
+        <xsd:element name="history" type="text" minOccurs="0" maxOccurs="unbounded" />
+        <xsd:element name="langUsage" type="text" minOccurs="0" maxOccurs="unbounded" />
+        <xsd:element name="restrictions" type="text" minOccurs="0" maxOccurs="unbounded" />
+        <xsd:element name="subjects" type="text" minOccurs="0" maxOccurs="unbounded" />
+        <xsd:element name="links" type="text" minOccurs="0" maxOccurs="unbounded" />
+        <xsd:element name="implementation" type="text" minOccurs="0" maxOccurs="unbounded" />
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="indexInfo">
+    <xsd:complexType>
+      <xsd:choice maxOccurs="unbounded">
+        <xsd:element ref="set" />
+        <xsd:element ref="index" />
+      </xsd:choice>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="set">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="title" type="text" minOccurs="0" maxOccurs="unbounded" />
+      </xsd:sequence>
+      <xsd:attribute name="name" type="xsd:string" use="required" />
+      <xsd:attribute name="identifier" type="xsd:string" use="required" />
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="index">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="title" type="text" minOccurs="0" maxOccurs="unbounded" />
+        <xsd:element ref="map" maxOccurs="unbounded" />
+      </xsd:sequence>
+      <xsd:attribute name="id" type="xsd:string" />
+      <xsd:attribute name="search" type="xsd:boolean" use="required" />
+      <xsd:attribute name="scan" type="xsd:boolean" use="required" />
+      <xsd:attribute name="sort" type="xsd:boolean" use="required" />
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="map">
+    <xsd:complexType>
+      <xsd:choice>
+        <xsd:element name="name">
+          <xsd:complexType>
+            <xsd:simpleContent>
+              <xsd:extension base="xsd:string">
+                <xsd:attribute name="set" type="xsd:string" use="required" />
+              </xsd:extension>
+            </xsd:simpleContent>
+          </xsd:complexType>
+        </xsd:element>
+      </xsd:choice>
+      <xsd:attribute name="primary" type="xsd:boolean" default="false" />
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="schemaInfo">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="schema" maxOccurs="unbounded">
+          <xsd:complexType>
+            <xsd:sequence>
+              <xsd:element name="title" type="text" minOccurs="0" maxOccurs="unbounded"/>
+            </xsd:sequence>
+            <xsd:attribute name="identifier" type="xsd:string" use="required" />
+            <xsd:attribute name="name" type="xsd:string" use="required" />
+            <xsd:attribute name="location" type="xsd:anyURI" />
+            <xsd:attribute name="sort" type="xsd:boolean" use="required" />
+            <xsd:attribute name="retrieve" type="xsd:boolean" use="required" />
+          </xsd:complexType>
+        </xsd:element>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:complexType name="text">
+    <xsd:simpleContent>
+      <xsd:extension base="xsd:string">
+        <xsd:attribute ref="xml:lang" use="required" />
+        <xsd:attribute name="primary" type="xsd:boolean" default="false" />
+      </xsd:extension>
+    </xsd:simpleContent>
+  </xsd:complexType>
+
+</xsd:schema>
