@@ -35,7 +35,7 @@ public class Results {
     public Results(String pid, String query, List<ResultsEntry> results, long total, long offset) {
         this.pid = pid;
         this.query = query;
-        this.results = new ArrayList<>(results);
+        this.results = results;
         this.total = total;
         this.offset = offset;
     }
