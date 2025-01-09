@@ -61,4 +61,3 @@ docker run -p 8080:8080 -P -e "TOMCAT_PASSWORD=verysecret" dzp-fcs
 |-----------------------|--------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|
 | TOMCAT_PASSWORD       | Apache Tomcat password.<br/>See [Apache Tomcat packaged by Bitnami](https://hub.docker.com/r/bitnami/tomcat) | No default                                                                       |
 | DZP_FCS_SOLR_ENDPOINT | Endpoint url for the Solr search engine of German Newspaper Portal                                           | https://api.deutsche-digitale-bibliothek.de/search/index/newspaper-issues/select |
-| DZP_FCS_PATH_PREFIX   | Path prefix (if you change it to `/myapp/*`, the servlet will serve under `http://localhost:8080/myapp/`     | `/*`                                                                             |
