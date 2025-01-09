@@ -55,13 +55,16 @@
             <scope>provided</scope>
         </dependency>
         
-<!--        <dependency>
+        <!-- Better use this -->
+        <!--
+        <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
             <version>6.1.0</version>
             <type>jar</type>
             <scope>provided</scope>
-        </dependency>-->
+        </dependency>
+        -->
 
         <!-- Logging -->
         <dependency>
@@ -130,15 +133,19 @@
     <build>
         <finalName>dzp-fcs</finalName>
         <plugins>
-            <!-- compiler targeting Java 11 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
-                    <release>11</release>
+                    <release>21</release>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-war-plugin</artifactId>
+                <version>3.4.0</version>
+            </plugin>            
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-project-info-reports-plugin</artifactId>
