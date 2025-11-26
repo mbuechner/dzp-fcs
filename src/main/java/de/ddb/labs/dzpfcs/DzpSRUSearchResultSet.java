@@ -21,8 +21,6 @@ import java.util.List;
 import java.util.Set;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamWriter;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import de.ddb.labs.dzpfcs.searcher.Results;
 import eu.clarin.sru.server.SRUConstants;
 import eu.clarin.sru.server.SRUDiagnostic;
@@ -73,7 +71,7 @@ import org.xml.sax.helpers.DefaultHandler;
  */
 public class DzpSRUSearchResultSet extends SRUSearchResultSet {
 
-    private static final Logger LOGGER = LogManager.getLogger(DzpSRUSearchResultSet.class);
+    // private static final Logger LOGGER = LogManager.getLogger(DzpSRUSearchResultSet.class);
 
     /**
      * SRU Server Config, might be useful for response generation?

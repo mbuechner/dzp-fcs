@@ -54,7 +54,6 @@ import eu.clarin.sru.server.fcs.DataView;
 import eu.clarin.sru.server.fcs.EndpointDescription;
 import eu.clarin.sru.server.fcs.ResourceInfo;
 import eu.clarin.sru.server.fcs.SimpleEndpointSearchEngineBase;
-import eu.clarin.sru.server.fcs.parser.QueryParserException;
 import eu.clarin.sru.server.fcs.utils.SimpleEndpointDescriptionParser;
 import de.ddb.labs.dzpfcs.query.CQLToSolrConverter;
 import de.ddb.labs.dzpfcs.searcher.ResultsEntry;
@@ -384,10 +383,6 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         /* start search (query = myQuery, offset = startRecord, limit = maximumRecords) */
         final Results results = new Results(pid, myQuery, docList, numFound, startRecord);
 
-        if (results == null) {
-            throw new SRUException(SRUConstants.SRU_GENERAL_SYSTEM_ERROR, "Error in Searcher");
-        }
-
         /* wrap results into custom SRUSearchResultSet */
         return new DzpSRUSearchResultSet(config, request, diagnostics, dataviews, results);
     }
@@ -415,7 +410,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
             try {
                 myQuery = CQLToSolrConverter.convertCQLtoSolrQuery(q.getParsedQuery());
                 LOGGER.debug("Converted Solr: {}", myQuery);
-            } catch (QueryParserException e) {
+            } catch (Exception e) {
                 throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN, "Converting query with queryType 'cql' to MYQUERY failed.", e);
             }
         } else {

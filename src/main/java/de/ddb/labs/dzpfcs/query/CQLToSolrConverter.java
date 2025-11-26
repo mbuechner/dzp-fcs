@@ -21,10 +21,8 @@ import org.z3950.zing.cql.CQLBooleanNode;
 import org.z3950.zing.cql.CQLNode;
 import org.z3950.zing.cql.CQLOrNode;
 import org.z3950.zing.cql.CQLTermNode;
-
 import eu.clarin.sru.server.SRUConstants;
 import eu.clarin.sru.server.SRUException;
-import eu.clarin.sru.server.fcs.parser.QueryParserException;
 
 /**
  * Source:
@@ -34,7 +32,7 @@ import eu.clarin.sru.server.fcs.parser.QueryParserException;
  */
 public class CQLToSolrConverter {
 
-    public static String convertCQLtoSolrQuery(final CQLNode node) throws QueryParserException, SRUException {
+    public static String convertCQLtoSolrQuery(final CQLNode node) throws SRUException {
         final StringBuilder sb = new StringBuilder();
 
         convertCQLtoSolrSingle(node, sb);

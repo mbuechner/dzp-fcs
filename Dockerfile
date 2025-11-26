@@ -1,15 +1,21 @@
-FROM maven:3-eclipse-temurin-21-alpine AS mchain
-COPY pom.xml /tmp/
-COPY src/ /tmp/src/
+FROM maven:3-amazoncorretto-21 AS mchain
 WORKDIR /tmp/
-RUN mvn clean package
+COPY . .
+RUN mvn package;
 
-FROM bitnami/tomcat:9.0
-LABEL org.opencontainers.image.authors="m.buechner@dnb.de"
-COPY --from=mchain /tmp/target/dzp-fcs.war /opt/bitnami/tomcat/webapps/ROOT.war
-USER root
-RUN apt-get update && \
-    apt-get -y upgrade && \ 
-    sed -i 's#<Connector port="8080"#<Connector port="8080" compression="on"#' /opt/bitnami/tomcat/conf/server.xml
-USER 1001
+FROM tomcat:9-jre21
+LABEL maintainer="Michael Büchner <m.buechner@dnb.de>"
+
+# Default-Webapps raus
+RUN rm -rf "${CATALINA_HOME}/webapps/"*
+
+# App kopieren
+COPY --from=mchain /tmp/target/dzp-fcs.war ${CATALINA_HOME}/webapps/ROOT.war
+# Enable GZIP compression
+RUN sed -i 's#<Connector port="8080"#<Connector port="8080" compression="on"#' ${CATALINA_HOME}/conf/server.xml
+
+# OpenShift-Compatibility
+RUN chgrp -R 0 "${CATALINA_HOME}" \
+ && chmod -R g=u "${CATALINA_HOME}"
+
 EXPOSE 8080
