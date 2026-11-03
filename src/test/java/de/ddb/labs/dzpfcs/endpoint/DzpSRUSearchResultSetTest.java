@@ -1,7 +1,7 @@
-package de.ddb.labs.dzpfcs;
+package de.ddb.labs.dzpfcs.endpoint;
 
-import de.ddb.labs.dzpfcs.searcher.Results;
-import de.ddb.labs.dzpfcs.searcher.ResultsEntry;
+import de.ddb.labs.dzpfcs.model.Results;
+import de.ddb.labs.dzpfcs.model.ResultsEntry;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.util.List;

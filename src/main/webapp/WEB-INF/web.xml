@@ -21,7 +21,7 @@
         <servlet-class>eu.clarin.sru.server.utils.SRUServerServlet</servlet-class>
         <init-param>
             <param-name>eu.clarin.sru.server.utils.sruServerSearchEngineClass</param-name>
-            <param-value>de.ddb.labs.dzpfcs.DzpEndpointSearchEngine</param-value>
+            <param-value>de.ddb.labs.dzpfcs.endpoint.DzpEndpointSearchEngine</param-value>
         </init-param>
 
         <!-- some SRU settings -->

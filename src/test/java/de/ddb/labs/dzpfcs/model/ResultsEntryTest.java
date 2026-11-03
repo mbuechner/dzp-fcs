@@ -1,4 +1,4 @@
-package de.ddb.labs.dzpfcs.searcher;
+package de.ddb.labs.dzpfcs.model;
 
 import java.util.List;
 import java.util.Set;

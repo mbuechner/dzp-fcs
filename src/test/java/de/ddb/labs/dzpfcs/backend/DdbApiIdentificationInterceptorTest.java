@@ -1,4 +1,4 @@
-package de.ddb.labs.dzpfcs;
+package de.ddb.labs.dzpfcs.backend;
 
 import java.io.IOException;
 import java.util.List;
@@ -28,8 +28,11 @@ class DdbApiIdentificationInterceptorTest {
     @ParameterizedTest
     @CsvSource({"0,0", "20,40"})
     void identifiesCountAndPaginatedRequestsWithoutChangingTheirQuery(int rows, int start) throws IOException {
-        HttpUrl url = DzpEndpointSearchEngine.buildSearchUrl("https://example.invalid/solr/select",
-                "\"Berlin & Hamburg\"", rows, start);
+        HttpUrl url = HttpUrl.get("https://example.invalid/solr/select").newBuilder()
+                .setQueryParameter("q", "\"Berlin & Hamburg\"")
+                .setQueryParameter("rows", Integer.toString(rows))
+                .setQueryParameter("start", Integer.toString(start))
+                .build();
         Request original = new Request.Builder().url(url).header("Accept", "application/json").build();
 
         Request sent = send(new DdbApiIdentificationInterceptor(CLIENT_ID, CLIENT_VERSION, CONTACT_EMAIL, CONTACT_URL), original);

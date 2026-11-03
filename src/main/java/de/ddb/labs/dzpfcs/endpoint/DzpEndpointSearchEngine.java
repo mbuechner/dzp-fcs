@@ -14,7 +14,9 @@
  * You should have received a copy of the GNU General Public License 
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package de.ddb.labs.dzpfcs;
+package de.ddb.labs.dzpfcs.endpoint;
+
+import de.ddb.labs.dzpfcs.backend.DdbApiIdentificationInterceptor;
 
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
@@ -43,7 +45,7 @@ import javax.naming.NamingException;
 import javax.servlet.ServletContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import de.ddb.labs.dzpfcs.searcher.Results;
+import de.ddb.labs.dzpfcs.model.Results;
 import eu.clarin.sru.server.CQLQueryParser;
 import eu.clarin.sru.server.SRUConfigException;
 import eu.clarin.sru.server.SRUConstants;
@@ -60,7 +62,7 @@ import eu.clarin.sru.server.fcs.ResourceInfo;
 import eu.clarin.sru.server.fcs.SimpleEndpointSearchEngineBase;
 import eu.clarin.sru.server.fcs.utils.SimpleEndpointDescriptionParser;
 import de.ddb.labs.dzpfcs.query.CQLToSolrConverter;
-import de.ddb.labs.dzpfcs.searcher.ResultsEntry;
+import de.ddb.labs.dzpfcs.model.ResultsEntry;
 import eu.clarin.sru.server.SRUServer;
 import io.github.cdimascio.dotenv.Dotenv;
 import java.util.EnumSet;

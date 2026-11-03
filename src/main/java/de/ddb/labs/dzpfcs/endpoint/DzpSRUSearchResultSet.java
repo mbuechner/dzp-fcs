@@ -14,14 +14,14 @@
  * You should have received a copy of the GNU General Public License 
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package de.ddb.labs.dzpfcs;
+package de.ddb.labs.dzpfcs.endpoint;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamWriter;
-import de.ddb.labs.dzpfcs.searcher.Results;
+import de.ddb.labs.dzpfcs.model.Results;
 import eu.clarin.sru.server.SRUConstants;
 import eu.clarin.sru.server.SRUDiagnostic;
 import eu.clarin.sru.server.SRUDiagnosticList;
@@ -30,7 +30,7 @@ import eu.clarin.sru.server.SRURequest;
 import eu.clarin.sru.server.SRUSearchResultSet;
 import eu.clarin.sru.server.SRUServerConfig;
 import eu.clarin.sru.server.fcs.XMLStreamWriterHelper;
-import de.ddb.labs.dzpfcs.searcher.ResultsEntry;
+import de.ddb.labs.dzpfcs.model.ResultsEntry;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;

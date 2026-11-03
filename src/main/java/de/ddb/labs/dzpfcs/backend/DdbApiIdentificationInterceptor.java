@@ -1,4 +1,20 @@
-package de.ddb.labs.dzpfcs;
+/*
+ * Copyright 2023-2026 Michael Büchner, Deutsche Digitale Bibliothek
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+package de.ddb.labs.dzpfcs.backend;
 
 import java.io.IOException;
 import java.util.regex.Pattern;
@@ -7,13 +23,19 @@ import okhttp3.Interceptor;
 import okhttp3.Request;
 import okhttp3.Response;
 
-final class DdbApiIdentificationInterceptor implements Interceptor {
+/**
+ * Adds the application's versioned identity to every DDB API request.
+ * The complete User-Agent is validated and built once during startup, so this
+ * immutable interceptor can be shared by concurrent calls without per-call
+ * token validation or access to environment variables. Other headers are kept.
+ */
+public final class DdbApiIdentificationInterceptor implements Interceptor {
 
     private static final Pattern HTTP_TOKEN = Pattern.compile("[!#$%&'*+.^_`|~0-9A-Za-z-]+");
 
     private final String userAgent;
 
-    DdbApiIdentificationInterceptor(String clientId, String clientVersion, String contactEmail, String contactUrl) {
+    public DdbApiIdentificationInterceptor(String clientId, String clientVersion, String contactEmail, String contactUrl) {
         requireNonBlank(clientId, "clientId");
         requireNonBlank(clientVersion, "clientVersion");
         requireNonBlank(contactEmail, "contactEmail");

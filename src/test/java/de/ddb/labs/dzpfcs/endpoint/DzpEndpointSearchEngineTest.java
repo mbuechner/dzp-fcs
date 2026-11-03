@@ -1,10 +1,10 @@
-package de.ddb.labs.dzpfcs;
+package de.ddb.labs.dzpfcs.endpoint;
 
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.spi.json.Jackson3JsonProvider;
 import com.jayway.jsonpath.spi.mapper.Jackson3MappingProvider;
-import de.ddb.labs.dzpfcs.searcher.ResultsEntry;
+import de.ddb.labs.dzpfcs.model.ResultsEntry;
 import java.util.List;
 import okhttp3.HttpUrl;
 import org.junit.jupiter.api.Test;
