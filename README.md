@@ -1,88 +1,78 @@
-# SRU/CQL FCS 2.0 Endpoint for German Newspaper Portal
+# dzp-fcs
 
-This application implements a [Federated Content Search (FCS)](https://www.clarin.eu/content/federated-content-search-clarin-fcs-technical-details) endpoint for the [German Newspaper Portal](https://www.deutsche-digitale-bibliothek.de/newspaper).
+An SRU/CQL [Federated Content Search](https://www.clarin.eu/content/federated-content-search-clarin-fcs-technical-details) endpoint for the [German Newspaper Portal](https://www.deutsche-digitale-bibliothek.de/newspaper). Translates CQL into Solr searches and returns paginated FCS 2.0 records with highlighted text. Supports terms, phrases and basic `AND`/`OR` queries.
 
-The aim of Federated Content Search is to enable a content search via distributed resources. The [German Digital Library](https://www.deutsche-digitale-bibliothek.de/) provides the German Newspaper Portal with a searchable corpus for this purpose.
+**Stack:** Java 25 · Maven · Servlet 4 / Tomcat 9 · CLARIN FCS · OkHttp · Jackson · Log4j JSON logs.
 
-The endpoint is published at the following URL: https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs
+**Live:** [labs.deutsche-digitale-bibliothek.de/app/dzp-fcs](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs) · [search “Berlin”](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query=Berlin)
 
-The following searches are given as examples.
+## Run
 
-* Search for ["Berlin"](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query=Berlin)
-* Search for ["Berlin ist schön"](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query="Berlin%20ist%20schön")
-* Search for ["Berlin" and "Hamburg"](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query=Berlin%20AND%20Hamburg)
+```bash
+docker build -t dzp-fcs .
+docker run --rm -p 8080:8080 dzp-fcs
+```
 
-The endpoint is used for:
+The endpoint listens at `http://localhost:8080/`. GZIP is negotiated automatically.
 
-* Text+: [https://fcs.text-plus.org/?&query="Berlin ist schön"](https://fcs.text-plus.org/?&query="Berlin%20ist%20schön")
-* Text+: [https://text-plus.org/en/](https://text-plus.org/en/) (Search → Content)
-* SAW Leipzig: https://tppssi-demo.saw-leipzig.de/ (Search in content)
-* etc.
+```bash
+curl --compressed 'http://localhost:8080/?operation=explain'
+curl --compressed --get 'http://localhost:8080/' \
+  --data-urlencode 'operation=searchRetrieve' \
+  --data-urlencode 'query="Berlin ist schön"' \
+  --data-urlencode 'maximumRecords=10'
+```
 
-## Implementation
-This Java servlet was implemented using the [FCS Endpoint Archetype](https://github.com/clarin-eric/fcs-endpoint-archetype). Further information can be found there.
+Omit `version` for native SRU 2.0; use `version=1.2` for SRU 1.2. Responses use embedded XML records. Unsupported CQL features return SRU diagnostics.
 
 ## Build
 
-Building requires JDK 25 LTS and Apache Maven. CI and the Docker build use Eclipse Temurin 25.
-
-The build automation tool "Maven" can be used to create the Web Application Archive (WAR). The following command, executed in the folder containing the `pom.xml` file, creates a publishable WAR file.
+Requires JDK 25 and Maven:
 
 ```bash
-mvn [clean] package
+mvn -B package              # tests + target/dzp-fcs.war
+mvn -B spotbugs:check       # static analysis after compilation
 ```
 
-## Docker
-Yes, there's a docker container for this application available at GitHub.
+The WAR uses `javax.servlet`; Tomcat 10/11 requires Jakarta migration. The Docker build supplies the Java/Maven toolchain. [Development notes](docs/development.md) cover packages, checks and protocol limitations.
 
-https://github.com/mbuechner/dzp-fcs/pkgs/container/dzp-fcs
+## Configure
 
-The container runs Apache Tomcat 9.0.123 on Java 25. The FCS endpoint uses `javax.servlet` (Servlet 4.0), so Tomcat 10 or 11 requires migrating the application and its servlet dependencies to `jakarta.servlet`. See the [Tomcat migration guide](https://tomcat.apache.org/migration-10.html).
+Pass environment variables with `docker run -e`, `--env-file`, or OpenShift `env`. Java environment variables override defaults in [`src/main/resources/.env`](src/main/resources/.env). **Container path, public URL and compression settings must be process environment variables**; the bundled Java `.env` does not configure Tomcat.
 
-The Tomcat project has announced the end of support for Tomcat 9.0 on 31 March 2027 and a compatible Tomcat 9.1 branch with releases until 31 December 2030. See the [Tomcat support announcement](https://tomcat.apache.org/tomcat-9.0.x-eos).
+| Setting | Default / purpose |
+|---|---|
+| `DZP_FCS_CONTEXT_PATH` | `/` — actual Tomcat application path |
+| `DZP_FCS_PUBLIC_PATH` | Context path — path advertised by Explain |
+| `DZP_FCS_PUBLIC_HOST` | `localhost` — public hostname only |
+| `DZP_FCS_PUBLIC_TRANSPORT` | `http` — public URL scheme |
+| `DZP_FCS_PUBLIC_PORT` | `8080` — public port |
+| `DZP_FCS_SOLR_ENDPOINT` | [DDB newspaper-issues Solr endpoint](https://api.deutsche-digitale-bibliothek.de/2/search/index/newspaper-issues/select) |
+| `DZP_FCS_CLIENT_ID` | `dzp-fcs` — backend `User-Agent` product name |
+| `DZP_FCS_CONTACT_EMAIL`, `DZP_FCS_CONTACT_URL` | Maintainer contact in `User-Agent`; [defaults](docs/configuration.md#environment-variables) |
+| `DZP_FCS_BACKEND_*` | Connect/read/budget **10/50/50 s**, **3** attempts, **16** concurrent calls, backoff **1000–10000 ms** |
+| `DZP_FCS_HTTP_COMPRESSION` | `on` — negotiated GZIP; `off` if the ingress handles compression |
 
-### Container build
+All 19 variable names, exact defaults, retry rules and optional compression settings are in the [configuration reference](docs/configuration.md). The backend budget includes queueing, calls and retries; leave time for the response before the proxy deadline. Logs go to stdout as JSON Lines and include search text and request IDs.
 
-1. Checkout GitHub repository:
+For production, save this as `production.env`:
 
-   ```bash
-   git clone https://github.com/mbuechner/dzp-fcs
-   ```
-
-2. Go into folder:
-
-   ```bash
-   cd dzp-fcs
-   ```
-
-3. Build the container:
-
-   ```bash
-   docker build -t dzp-fcs .
-   ```
-
-4. Start the container:
-
-   ```bash
-   docker run --rm -p 8080:8080 dzp-fcs
-   ```
-
-5. Open browser: [http://localhost:8080/](http://localhost:8080/)
-
-
-### Environment variables
-
-| Variable | Description | Default value |
-|---|---|---|
-| DZP_FCS_SOLR_ENDPOINT | Endpoint URL for the German Newspaper Portal Solr search engine | `https://api.deutsche-digitale-bibliothek.de/2/search/index/newspaper-issues/select` |
-| DZP_FCS_CLIENT_ID | Application identifier sent in the `User-Agent` header (HTTP product token) | `dzp-fcs` |
-| DZP_FCS_CONTACT_EMAIL | Maintainer email sent in the `User-Agent` comment | `m.buechner@dnb.de` |
-| DZP_FCS_CONTACT_URL | Project or contact URL sent in the `User-Agent` comment | `https://github.com/mbuechner/dzp-fcs` |
-
-Both the count request and the result request to the DDB API include an identification header:
-
-```http
-User-Agent: dzp-fcs/1.5 (+https://github.com/mbuechner/dzp-fcs; mailto:m.buechner@dnb.de)
+```dotenv
+DZP_FCS_CONTEXT_PATH=/app/dzp-fcs
+DZP_FCS_PUBLIC_HOST=labs.deutsche-digitale-bibliothek.de
+DZP_FCS_PUBLIC_TRANSPORT=https
+DZP_FCS_PUBLIC_PORT=443
 ```
 
-Environment variables override the bundled defaults. Maven injects the project version from `pom.xml` into `dzp-fcs.properties` during the build, so the `User-Agent` version follows each release automatically. The identification follows the standard HTTP [User-Agent](https://www.rfc-editor.org/rfc/rfc9110.html#name-user-agent) header; the DDB search endpoint does not document a separate client-ID parameter. Client IDs must be HTTP product tokens without spaces; contact values must be non-empty HTTP header values.
+```bash
+docker run --rm -p 8080:8080 --env-file production.env dzp-fcs
+```
+
+This serves `/app/dzp-fcs` and publishes that path in Explain. If the proxy **strips the prefix**, use `DZP_FCS_CONTEXT_PATH=/` plus `DZP_FCS_PUBLIC_PATH=/app/dzp-fcs`. Context paths are selected at container startup; use a fresh container when changing them.
+
+## Details
+
+- [Configuration](docs/configuration.md): environment variables, paths, GZIP, timeouts, retries and servlet settings.
+- [Development](docs/development.md): package map, tests, SRU/FCS behavior, known limitations and Solr tuning.
+- [Logging](docs/logging.md): events, timings and usage statistics.
+- [Container registry](https://github.com/mbuechner/dzp-fcs/pkgs/container/dzp-fcs) · [License](LICENSE)
