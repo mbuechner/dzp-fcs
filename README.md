@@ -2,11 +2,31 @@
 
 An SRU/CQL [Federated Content Search](https://www.clarin.eu/content/federated-content-search-clarin-fcs-technical-details) endpoint for the [German Newspaper Portal](https://www.deutsche-digitale-bibliothek.de/newspaper). Translates CQL into Solr searches and returns paginated FCS 2.0 records with highlighted text. Supports terms, phrases and basic `AND`/`OR` queries.
 
+The [German Digital Library](https://www.deutsche-digitale-bibliothek.de/) provides the searchable newspaper corpus. FCS lets clients search it alongside resources from other providers.
+
 **Stack:** Java 25 · Maven · Servlet 4 / Tomcat 9 · CLARIN FCS · OkHttp · Jackson · Log4j JSON logs.
 
-**Live:** [labs.deutsche-digitale-bibliothek.de/app/dzp-fcs](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs) · [search “Berlin”](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query=Berlin)
+**Live:** [labs.deutsche-digitale-bibliothek.de/app/dzp-fcs](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs)
+
+## Examples
+
+Direct searches against the public endpoint:
+
+| Search | Example query |
+|---|---|
+| Term | [Berlin](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query=Berlin) |
+| Phrase | ["Berlin ist schön"](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query=%22Berlin%20ist%20sch%C3%B6n%22) |
+| Boolean AND | [Berlin AND Hamburg](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs?operation=searchRetrieve&query=Berlin%20AND%20Hamburg) |
+
+Example integrations from the original project documentation:
+
+- [Text+ FCS Aggregator: "Berlin ist schön"](https://fcs.text-plus.org/?query=%22Berlin%20ist%20sch%C3%B6n%22).
+- [Text+ website](https://text-plus.org/en/): Search → Federated Content Search (FCS).
+- [SAW Leipzig demo](https://tppssi-demo.saw-leipzig.de/): content search.
 
 ## Run
+
+From a [source checkout](docs/development.md#get-the-sources):
 
 ```bash
 docker build -t dzp-fcs .
@@ -74,5 +94,6 @@ This serves `/app/dzp-fcs` and publishes that path in Explain. If the proxy **st
 
 - [Configuration](docs/configuration.md): environment variables, paths, GZIP, timeouts, retries and servlet settings.
 - [Development](docs/development.md): package map, tests, SRU/FCS behavior, known limitations and Solr tuning.
+- [Upstream issue drafts](docs/upstream-issues.md): versioned reproductions and specification discrepancies.
 - [Logging](docs/logging.md): events, timings and usage statistics.
 - [Container registry](https://github.com/mbuechner/dzp-fcs/pkgs/container/dzp-fcs) · [License](LICENSE)
