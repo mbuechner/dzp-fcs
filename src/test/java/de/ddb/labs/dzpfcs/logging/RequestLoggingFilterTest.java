@@ -37,6 +37,8 @@ import org.apache.logging.log4j.message.ObjectMessage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Isolated;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
@@ -47,7 +49,120 @@ import org.junit.jupiter.params.provider.ValueSource;
 @Isolated("Temporarily captures the RequestLoggingFilter logger")
 class RequestLoggingFilterTest {
 
-    private final RequestLoggingFilter filter = new RequestLoggingFilter();
+    private final RequestLoggingFilter filter = new RequestLoggingFilter(null);
+
+    @ParameterizedTest
+    @ValueSource(strings = {"kube-probe/1.32", "kube-probe/1.33", "kube-probe/2.0", "kube-probe/"})
+    void excludesProbeVersionsWhilePreservingTheChainRequestIdAndScopeCleanup(String userAgent) throws Exception {
+        RequestDouble probe = new RequestDouble();
+        probe.headers.put("User-Agent", userAgent);
+        ResponseDouble response = new ResponseDouble();
+        byte[] body = "<healthy/>".getBytes(StandardCharsets.UTF_8);
+
+        try (CloseableThreadContext.Instance ignored = CloseableThreadContext.put("requestId", "outer");
+                CaptureAppender logs = new CaptureAppender()) {
+            filter.doFilter(probe.proxy, response.proxy, (input, output) -> {
+                probe.enterChain();
+                assertNotEquals("outer", ThreadContext.get("requestId"));
+                RequestTelemetry.searchReturned(99, 1);
+                output.getOutputStream().write(body);
+            });
+
+            assertTrue(logs.events.isEmpty(), "Routine probe completions must be excluded");
+            assertArrayEquals(body, response.output.bytes.toByteArray());
+            assertEquals("outer", ThreadContext.get("requestId"));
+            assertEquals(response.headers.get("X-Request-ID"),
+                    UUID.fromString(response.headers.get("X-Request-ID")).toString());
+
+            RequestDouble next = new RequestDouble();
+            ResponseDouble nextResponse = new ResponseDouble();
+            filter.doFilter(next.proxy, nextResponse.proxy, (input, output) -> next.enterChain());
+            LogEvent completion = logs.onlyCompletion();
+            assertEquals(0, payload(completion).get("backendCalls"));
+            assertEquals("not_invoked", payload(completion).get("engineOutcome"));
+            assertNull(payload(completion).get("numFound"));
+            assertNotEquals(response.headers.get("X-Request-ID"), nextResponse.headers.get("X-Request-ID"));
+            assertEquals("outer", ThreadContext.get("requestId"));
+        }
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"Browser/1.0", "prefix-kube-probe/1.32", "KUBE-PROBE/1.32", "kube-probe"})
+    void logsMissingOrNonmatchingUserAgents(String userAgent) throws Exception {
+        RequestDouble request = new RequestDouble();
+        request.headers.put("User-Agent", userAgent);
+        try (CaptureAppender logs = new CaptureAppender()) {
+            filter.doFilter(request.proxy, new ResponseDouble().proxy, (input, output) -> request.enterChain());
+            assertEquals(Level.INFO, logs.onlyCompletion().getLevel());
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "my-monitor/1.0,false", "my-monitor/2.0,false", "internal.health/7,false",
+        "kube-probe/1.32,true", "internalXhealth/7,true", "prefix-my-monitor/1.0,true"
+    })
+    void usesConfiguredTrimmedLiteralPrefixesInsteadOfTheDefaults(String userAgent, boolean logged) throws Exception {
+        RequestLoggingFilter configured = new RequestLoggingFilter(" my-monitor/ , internal.health/ , , my-monitor/ ");
+        RequestDouble request = new RequestDouble();
+        request.headers.put("User-Agent", userAgent);
+        try (CaptureAppender logs = new CaptureAppender()) {
+            configured.doFilter(request.proxy, new ResponseDouble().proxy, (input, output) -> request.enterChain());
+            if (logged) {
+                assertEquals(Level.INFO, logs.onlyCompletion().getLevel());
+            } else {
+                assertTrue(logs.events.isEmpty());
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", " , , "})
+    void emptyConfigurationLogsProbeCompletionsAgain(String configuration) throws Exception {
+        RequestDouble request = new RequestDouble();
+        request.headers.put("User-Agent", "kube-probe/1.32");
+        try (CaptureAppender logs = new CaptureAppender()) {
+            new RequestLoggingFilter(configuration).doFilter(request.proxy, new ResponseDouble().proxy,
+                    (input, output) -> request.enterChain());
+            assertEquals(Level.INFO, logs.onlyCompletion().getLevel());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {400, 404, 500, 503})
+    void keepsProbeCompletionsWithHttpErrors(int status) throws Exception {
+        RequestDouble request = new RequestDouble();
+        request.headers.put("User-Agent", "kube-probe/1.32");
+        ResponseDouble response = new ResponseDouble();
+        response.status = status;
+        try (CaptureAppender logs = new CaptureAppender()) {
+            filter.doFilter(request.proxy, response.proxy, (input, output) -> request.enterChain());
+            assertEquals(status >= 500 ? Level.ERROR : Level.WARN, logs.onlyCompletion().getLevel());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"diagnostic", "exception", "timeout", "backendFailure", "partial"})
+    void keepsProbeCompletionsWithApplicationWarningsEvenWhenHttpStatusIs200(String problem) throws Exception {
+        RequestDouble request = new RequestDouble();
+        request.headers.put("User-Agent", "kube-probe/1.32");
+        try (CaptureAppender logs = new CaptureAppender()) {
+            filter.doFilter(request.proxy, new ResponseDouble().proxy, (input, output) -> {
+                request.enterChain();
+                switch (problem) {
+                    case "diagnostic", "exception" -> RequestTelemetry.searchFailed(problem, null);
+                    case "timeout" -> RequestTelemetry.recordBackend(100, 50, 25, 25,
+                            2, 1, 1, 200, "success", null);
+                    case "backendFailure" -> RequestTelemetry.recordBackend(100, 50, 25, 25,
+                            1, 0, 0, 503, "error", null);
+                    case "partial" -> RequestTelemetry.recordSolrTiming(12L, true);
+                    default -> throw new AssertionError(problem);
+                }
+            });
+            assertEquals(Level.WARN, logs.onlyCompletion().getLevel());
+        }
+    }
 
     @Test
     void recordsOneCompletionWithOriginalMetadataTypedTimingsAndUnbufferedBytes() throws Exception {
@@ -120,6 +235,7 @@ class RequestLoggingFilterTest {
     @Test
     void preservesTheOriginalExceptionAndRestoresContextBeforeTheThreadIsReused() throws Exception {
         RequestDouble firstRequest = new RequestDouble();
+        firstRequest.headers.put("User-Agent", "kube-probe/1.32");
         ResponseDouble firstResponse = new ResponseDouble();
         ServletException original = new ServletException("original servlet failure");
 
@@ -160,6 +276,7 @@ class RequestLoggingFilterTest {
     @Test
     void recordsAnOutputFailureEvenWhenTheFrameworkSwallowsIt() throws Exception {
         RequestDouble request = new RequestDouble();
+        request.headers.put("User-Agent", "kube-probe/1.32");
         ResponseDouble response = new ResponseDouble();
         response.output.failure = new IOException("client disconnected");
 
@@ -184,6 +301,7 @@ class RequestLoggingFilterTest {
     @ValueSource(strings = {"streamAcquisition", "responseFlush", "streamFlush", "streamClose"})
     void recordsContainerOutputFailuresBeyondWriteCalls(String operation) throws Exception {
         RequestDouble request = new RequestDouble();
+        request.headers.put("User-Agent", "kube-probe/1.32");
         ResponseDouble response = new ResponseDouble();
         IOException original = new IOException("container output failed");
         if ("streamAcquisition".equals(operation)) {
@@ -276,6 +394,7 @@ class RequestLoggingFilterTest {
     @Test
     void logsParameterReadFailuresWithoutTurningACompletedRequestIntoAnException() throws Exception {
         RequestDouble request = new RequestDouble();
+        request.headers.put("User-Agent", "kube-probe/1.32");
         request.parameterFailure = new IllegalStateException("container parameter parsing failed");
         ResponseDouble response = new ResponseDouble();
 
@@ -285,6 +404,7 @@ class RequestLoggingFilterTest {
             LogEvent completion = logs.onlyCompletion();
             assertEquals(IllegalStateException.class.getName(),
                     payload(completion).get("parameterLogErrorClass"));
+            assertEquals(Level.WARN, completion.getLevel());
             assertEquals("returned", payload(completion).get("chainOutcome"));
             assertNull(completion.getThrown());
         }

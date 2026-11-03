@@ -72,8 +72,9 @@ Pass environment variables with `docker run -e`, `--env-file`, or OpenShift `env
 | `DZP_FCS_CONTACT_EMAIL`, `DZP_FCS_CONTACT_URL` | Maintainer contact in `User-Agent`; [defaults](docs/configuration.md#environment-variables) |
 | `DZP_FCS_BACKEND_*` | Connect/read/budget **10/50/50 s**, **3** attempts, **16** concurrent calls, backoff **1000–10000 ms** |
 | `DZP_FCS_HTTP_COMPRESSION` | `on` — negotiated GZIP; `off` if the ingress handles compression |
+| `DZP_FCS_LOG_EXCLUDED_USER_AGENT_PREFIXES` | `kube-probe/` — omit routine request summaries for matching User-Agents; [details](docs/logging.md#request-log-exceptions) |
 
-All 19 variable names, exact defaults, retry rules and optional compression settings are in the [configuration reference](docs/configuration.md). The backend budget includes queueing, calls and retries; leave time for the response before the proxy deadline. Logs go to stdout as JSON Lines and include search text and request IDs.
+All 20 variable names, exact defaults, retry rules and optional compression settings are in the [configuration reference](docs/configuration.md). The backend budget includes queueing, calls and retries; leave time for the response before the proxy deadline. Logs go to stdout as JSON Lines and include search text and request IDs.
 
 For production, save this as `production.env`:
 

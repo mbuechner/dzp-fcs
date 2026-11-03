@@ -2,7 +2,7 @@
 
 [Overview and quickstart](../README.md) · [Development](development.md) · [Logging](logging.md)
 
-Java backend settings are loaded through dotenv-java. Process environment variables take precedence over the bundled [`.env`](../src/main/resources/.env). Container deployment, public URL and HTTP compression are configured by the container process environment, separately from that Java resource. Restart the container after configuration changes.
+Java application settings are loaded through dotenv-java. Process environment variables take precedence over the bundled [`.env`](../src/main/resources/.env). Container deployment, public URL and HTTP compression are configured by the container process environment, separately from that Java resource. Restart the container after configuration changes.
 
 ## Endpoint path and public URL
 
@@ -63,6 +63,7 @@ Application log field `responseBytes` is measured before connector compression. 
 | DZP_FCS_CLIENT_ID | Application identifier sent in the `User-Agent` header (HTTP product token) | `dzp-fcs` |
 | DZP_FCS_CONTACT_EMAIL | Maintainer email sent in the `User-Agent` comment | `m.buechner@dnb.de` |
 | DZP_FCS_CONTACT_URL | Project or contact URL sent in the `User-Agent` comment | `https://github.com/mbuechner/dzp-fcs` |
+| DZP_FCS_LOG_EXCLUDED_USER_AGENT_PREFIXES | Comma-separated, case-sensitive literal User-Agent prefixes whose routine `INFO` request summaries are omitted; empty disables exclusions; [matching rules](logging.md#request-log-exceptions) | `kube-probe/` |
 | DZP_FCS_BACKEND_CONNECT_TIMEOUT_SECONDS | Connection timeout for an individual connection attempt | `10` |
 | DZP_FCS_BACKEND_READ_TIMEOUT_SECONDS | Maximum inactivity while reading a backend response | `50` |
 | DZP_FCS_BACKEND_REQUEST_TIMEOUT_SECONDS | Total backend budget per search, including queueing, all attempts, response-body reads and retry delays | `50` |

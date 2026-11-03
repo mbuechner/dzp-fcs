@@ -16,8 +16,11 @@
  */
 package de.ddb.labs.dzpfcs.logging;
 
+import io.github.cdimascio.dotenv.Dotenv;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.servlet.Filter;
@@ -35,7 +38,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Emits exactly one structured completion event for each synchronous HTTP request.
+ * Emits one structured completion event per synchronous HTTP request, except
+ * routine INFO events excluded by a configured User-Agent prefix.
  *
  * <p>The server generates its own request ID and returns it in {@code X-Request-ID}.
  * Client-supplied IDs are logged separately, so they cannot overwrite correlation
@@ -58,6 +62,22 @@ import org.apache.logging.log4j.Logger;
 public final class RequestLoggingFilter implements Filter {
 
     private static final Logger LOGGER = LogManager.getLogger(RequestLoggingFilter.class);
+    private final List<String> excludedUserAgentPrefixes;
+
+    /** Load immutable logging settings once, before the filter serves requests. */
+    public RequestLoggingFilter() {
+        this(Dotenv.load().get("DZP_FCS_LOG_EXCLUDED_USER_AGENT_PREFIXES"));
+    }
+
+    /** Explicit configuration seam without changing process-wide environment variables. */
+    RequestLoggingFilter(String excludedPrefixes) {
+        excludedUserAgentPrefixes = Arrays.stream((excludedPrefixes == null ? "kube-probe/" : excludedPrefixes)
+                .split(","))
+                .map(String::trim)
+                .filter(prefix -> !prefix.isEmpty())
+                .distinct()
+                .toList();
+    }
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
@@ -111,12 +131,20 @@ public final class RequestLoggingFilter implements Filter {
                         && !"success".equals(fields.get("backendOutcome"));
                 boolean hasWarning = (Integer) fields.get("backendTimeouts") > 0 || backendFailure
                         || Boolean.TRUE.equals(fields.get("solrPartialResults"))
-                        || "diagnostic".equals(fields.get("engineOutcome")) || status >= 400;
+                        || "diagnostic".equals(fields.get("engineOutcome"))
+                        || "exception".equals(fields.get("engineOutcome"))
+                        || fields.containsKey("parameterLogErrorClass") || status >= 400;
                 Level level = failure != null || status >= 500 ? Level.ERROR
                         : hasWarning || observed.writeFailure != null ? Level.WARN : Level.INFO;
-                StructuredLog.event(LOGGER, level, "request.completed", fields, failure);
+                if (level != Level.INFO || !isExcludedUserAgent((String) fields.get("clientUserAgent"))) {
+                    StructuredLog.event(LOGGER, level, "request.completed", fields, failure);
+                }
             }
         }
+    }
+
+    private boolean isExcludedUserAgent(String userAgent) {
+        return userAgent != null && excludedUserAgentPrefixes.stream().anyMatch(userAgent::startsWith);
     }
 
     /**

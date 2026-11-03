@@ -8,12 +8,28 @@ Every HTTP request receives a server-generated UUID in the `X-Request-ID` respon
 
 | Event (`message.event`) | Meaning |
 |---|---|
-| `request.completed` | Exactly one summary per synchronous HTTP request, including parsing, backend work and SRU serialization. Use this event for request/usage counts. |
+| `request.completed` | One summary per synchronous HTTP request unless its routine `INFO` completion matches a configured User-Agent exclusion. Includes parsing, backend work and SRU serialization. Use this event for request/usage counts. |
 | `search.completed` | One completed search-engine invocation, including translation, validation, backend work and JSON mapping. |
 | `backend.attempt.completed` | One started application-level HTTP call, including the entire body read and response close. |
 | `backend.retry.scheduled` | A retry has been scheduled. Interruption during its delay can prevent the next call from starting. |
 | `backend.completed` | Exactly one summary per backend operation, also when it times out waiting for a concurrency permit. |
 | `solr.partial_results` | The optional Solr response header reports partial/omitted results. Logging observes this without changing the existing response behavior. |
+
+## Request-log exceptions
+
+`DZP_FCS_LOG_EXCLUDED_USER_AGENT_PREFIXES` omits routine `INFO` `request.completed` events for matching User-Agents. Its default `kube-probe/` covers every probe version, including `kube-probe/1.32` and `kube-probe/1.33`.
+
+Values are comma-separated, case-sensitive literal prefixes, not regular expressions or wildcard patterns. Surrounding whitespace and empty entries are ignored. A configured list replaces the defaults:
+
+```dotenv
+DZP_FCS_LOG_EXCLUDED_USER_AGENT_PREFIXES=kube-probe/,my-monitor/
+```
+
+Set `DZP_FCS_LOG_EXCLUDED_USER_AGENT_PREFIXES=` to disable exclusions. These Java application settings use the bundled `.env` or process environment and take effect after restarting the application.
+
+The filter still processes every request, generates its request ID and restores its telemetry scope. `WARN` and `ERROR` completions remain visible. Other structured event types and Tomcat's access logs are unaffected.
+
+## Request fields and measurements
 
 `request.completed` records the decoded `query`, `operation`, `queryType`, requested `startRecord`/`maximumRecords`, `clientUserAgent`, `clientAddress`, HTTP method and path. The application intentionally logs complete search text for usage analysis; JSON escaping keeps quotes, line breaks and backslashes inside their original string values. Strings have a bounded layout buffer: exceptionally long queries above 65,536 UTF-16 code units additionally carry `queryChunked=true`, `queryLength` and `queryChunks`. Concatenate the chunks to reconstruct the complete query; `query` is then a shortened preview. Normal queries are unchanged. These summaries do not record cookies, authorization headers, arbitrary headers or request bodies.
 
@@ -43,4 +59,4 @@ For example, extract one row per search request with `jq` (non-JSON container li
 jq -Rc 'fromjson? | select(.message.event? == "request.completed" and .message.operation == "searchRetrieve") | {requestId, timestamp, query: (if .message.queryChunked then (.message.queryChunks | join("")) else .message.query end), client: .message.clientUserAgent, requestMs: .message.requestDurationMs, backendMs: .message.backendDurationMs, queueMs: .message.backendQueueMs, backoffMs: .message.backendBackoffMs, attempts: .message.backendAttempts, timeouts: .message.backendTimeouts, solrMs: .message.solrQTimeMs}' application.log
 ```
 
-Usage statistics count `request.completed`, not attempt or retry events. Aggregate requests per time interval/client, and calculate p50/p95/p99 from `requestDurationMs`; restrict backend-latency percentiles to summaries with `backendCalls > 0`. Sum `backendTimeouts` and `backendRetries` to measure failures and retry load, or count summaries with `backendTimeouts > 0` to measure affected requests. Query text and request IDs remain searchable log fields rather than high-cardinality metric labels. Backend/application time differences also include logging and other overhead and should not be interpreted as CPU time.
+Usage statistics count `request.completed`, not attempt or retry events. Suppressed completion events are absent from both usage counts and latency samples. Aggregate requests per time interval/client, and calculate p50/p95/p99 from `requestDurationMs`; restrict backend-latency percentiles to summaries with `backendCalls > 0`. Sum `backendTimeouts` and `backendRetries` to measure failures and retry load, or count summaries with `backendTimeouts > 0` to measure affected requests. Query text and request IDs remain searchable log fields rather than high-cardinality metric labels. Backend/application time differences also include logging and other overhead and should not be interpreted as CPU time.
