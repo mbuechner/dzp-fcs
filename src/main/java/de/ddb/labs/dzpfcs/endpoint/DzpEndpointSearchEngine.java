@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2025 Michael Büchner, Deutsche Digitale Bibliothek
+ * Copyright 2023-2026 Michael Büchner, Deutsche Digitale Bibliothek
  *
  * This program is free software: you can redistribute it and/or modify 
  * it under the terms of the GNU General Public License as published by 
@@ -16,36 +16,14 @@
  */
 package de.ddb.labs.dzpfcs.endpoint;
 
+import de.ddb.labs.dzpfcs.backend.BackendHttpSettings;
+import de.ddb.labs.dzpfcs.backend.BackendRequestExecutor;
 import de.ddb.labs.dzpfcs.backend.DdbApiIdentificationInterceptor;
-
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.JsonPath;
-import com.jayway.jsonpath.Option;
-import com.jayway.jsonpath.PathNotFoundException;
-import com.jayway.jsonpath.ReadContext;
-import com.jayway.jsonpath.TypeRef;
-import com.jayway.jsonpath.spi.json.Jackson3JsonProvider;
-import com.jayway.jsonpath.spi.json.JsonProvider;
-import com.jayway.jsonpath.spi.mapper.Jackson3MappingProvider;
-import com.jayway.jsonpath.spi.mapper.MappingProvider;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-import java.util.stream.Collectors;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
-import javax.servlet.ServletContext;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import de.ddb.labs.dzpfcs.backend.SolrResponseParser;
+import de.ddb.labs.dzpfcs.logging.RequestTelemetry;
+import de.ddb.labs.dzpfcs.logging.StructuredLog;
 import de.ddb.labs.dzpfcs.model.Results;
+import de.ddb.labs.dzpfcs.query.CQLToSolrConverter;
 import eu.clarin.sru.server.CQLQueryParser;
 import eu.clarin.sru.server.SRUConfigException;
 import eu.clarin.sru.server.SRUConstants;
@@ -61,381 +39,285 @@ import eu.clarin.sru.server.fcs.EndpointDescription;
 import eu.clarin.sru.server.fcs.ResourceInfo;
 import eu.clarin.sru.server.fcs.SimpleEndpointSearchEngineBase;
 import eu.clarin.sru.server.fcs.utils.SimpleEndpointDescriptionParser;
-import de.ddb.labs.dzpfcs.query.CQLToSolrConverter;
-import de.ddb.labs.dzpfcs.model.ResultsEntry;
-import eu.clarin.sru.server.SRUServer;
 import io.github.cdimascio.dotenv.Dotenv;
-import java.util.EnumSet;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import okhttp3.Dispatcher;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import javax.servlet.ServletContext;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import okhttp3.Response;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
- * Our implemention of a simple search engine to be used as a CLARIN-FCS
- * endpoint.
+ * Bridges CLARIN's SRU lifecycle to one paginated Solr backend operation.
  *
- * @see SimpleEndpointSearchEngineBase
+ * <p>The servlet initializes each instance before publishing it to request
+ * threads. Corpus metadata and the shared HTTP client then remain unchanged;
+ * queries, result pages and log fields are local to each invocation. Separate
+ * endpoint instances never share corpus configuration or mutable JSON defaults.
+ * The inherited endpoint description is also used for Explain responses.</p>
  */
 public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
 
     private static final Logger LOGGER = LogManager.getLogger(DzpEndpointSearchEngine.class);
-
-    // set in `src/main/webapp/WEB-INF/web.xml` if you want to package a custom endpoint-description.xml file at another location
     private static final String RESOURCE_INVENTORY_URL = "de.ddb.labs.dzpfcs.resourceInventoryURL";
 
     private final Dotenv dotenv = Dotenv.load();
+    private final String solrEndpoint = dotenv.get("DZP_FCS_SOLR_ENDPOINT");
+    private Set<String> resourcePids = Set.of();
+    private String defaultCorpusId;
+    private OkHttpClient httpClient;
+    private BackendRequestExecutor backend;
 
-    private final String dzpApi = dotenv.get("DZP_FCS_SOLR_ENDPOINT");
-
-    private Dispatcher dispatcher = null;
-
-    private OkHttpClient client = null;
-
-    /**
-     * Endpoint Description with resources, capabilities etc.
-     */
-    private static EndpointDescription endpointDescription;
-
-    /**
-     * List of our endpoint's resources (identified by PID Strings)
-     */
-    private static List<String> pids;
-
-    /**
-     * Our default corpus if SRU requests do no explicitely request a resource
-     * by PID with the <code>x-fcs-context</code> parameter. Must not be
-     * <code>null</code>!
-     */
-    private static String defaultCorpusId = null;
-
-    /**
-     * Read an environment variable from <code>java:comp/env/paramName</code>
-     * and return the value as Object.
-     *
-     * @param paramName the environment variables name to extract the value from
-     * @return the environment variable value as Object
-     */
-    protected Object readJndi(String paramName) {
-        Object jndiValue = null;
+    /** Load the bundled inventory or an explicitly configured filesystem path. */
+    protected EndpointDescription loadEndpointDescriptionFromURI(ServletContext context, Map<String, String> params)
+            throws SRUConfigException {
         try {
-            final InitialContext ic = new InitialContext();
-            jndiValue = ic.lookup("java:comp/env/" + paramName);
-        } catch (NamingException e) {
-            // handle exception
-        }
-        return jndiValue;
-    }
-
-    /**
-     * Read an environment variable and return the value as String.
-     *
-     * @param paramName the environment variables name to extract the value from
-     * @return the environment variable value as String
-     */
-    protected String getEnvParam(String paramName) {
-        return (String) readJndi("param/" + paramName);
-    }
-
-    /**
-     * Load the {@link EndpointDescription} from the JAR resources or from the
-     * <code>RESOURCE_INVENTORY_URL</code>.
-     *
-     * @param context the {@link ServletContext} for the Servlet
-     * @param params additional parameters gathered from the Servlet
-     * configuration and Servlet context.
-     * @return the {@link EndpointDescription} object
-     * @throws SRUConfigException an error occurred during loading/reading the
-     * <code>endpoint-description.xml</code> file
-     */
-    protected EndpointDescription loadEndpointDescriptionFromURI(ServletContext context, Map<String, String> params) throws SRUConfigException {
-        try {
-            URL url;
-            String riu = params.get(RESOURCE_INVENTORY_URL);
-            if ((riu == null) || riu.isEmpty()) {
-                url = context.getResource("/WEB-INF/endpoint-description.xml");
-                LOGGER.debug("using bundled 'endpoint-description.xml' file");
-            } else {
-                url = new File(riu).toURI().toURL();
-                LOGGER.debug("using external file '{}'", riu);
+            String path = params.get(RESOURCE_INVENTORY_URL);
+            URL inventory = path == null || path.isEmpty()
+                    ? context.getResource("/WEB-INF/endpoint-description.xml") : new File(path).toURI().toURL();
+            if (inventory == null) {
+                throw new SRUConfigException("Endpoint description resource is missing.");
             }
-
-            return SimpleEndpointDescriptionParser.parse(url);
-        } catch (MalformedURLException mue) {
-            throw new SRUConfigException("Malformed URL for initializing resource info inventory", mue);
+            return SimpleEndpointDescriptionParser.parse(inventory);
+        } catch (MalformedURLException e) {
+            throw new SRUConfigException("Invalid endpoint description location.", e);
         }
     }
 
-    /**
-     * Parses the list of root resource PIDs from the
-     * {@link EndpointDescription}.
-     *
-     * Note: This only considers root resources and not subresources!
-     *
-     * @param ed the {@link EndpointDescription} for the Servlet
-     * @return a list of String with root resource PIDs
-     * @throws eu.clarin.sru.server.SRUException
-     */
-    protected List<String> getCollectionsFromEndpointDescription(EndpointDescription ed) throws SRUException {
-        // NOTE: only root resources!
-        return ed.getResourceList(EndpointDescription.PID_ROOT).stream().map(ResourceInfo::getPid)
-                .collect(Collectors.toList());
+    /** Only root resources are searchable; subresources are not separate corpora here. */
+    protected List<String> getCollectionsFromEndpointDescription(EndpointDescription description) throws SRUException {
+        List<ResourceInfo> roots = description.getResourceList(EndpointDescription.PID_ROOT);
+        return roots == null ? List.of() : roots.stream().map(ResourceInfo::getPid).toList();
     }
 
     /**
-     * Create {@link EndpointDescription} for this servlet.
-     *
-     * @param context
-     * @param config
-     * @param params
-     * @return
-     * @throws eu.clarin.sru.server.SRUConfigException
-     * @see #loadEndpointDescriptionFromURI(ServletContext, Map)
-     * @see
-     * SimpleEndpointSearchEngineBase#createEndpointDescription(ServletContext,
-     * SRUServerConfig, Map)
+     * Reuse the inventory loaded by doInit. The base class calls this hook once
+     * more afterwards, so Explain and searching use the same parsed object.
      */
     @Override
     protected EndpointDescription createEndpointDescription(ServletContext context, SRUServerConfig config,
             Map<String, String> params) throws SRUConfigException {
-        return loadEndpointDescriptionFromURI(context, params);
+        return endpointDescription == null ? loadEndpointDescriptionFromURI(context, params) : endpointDescription;
     }
 
-    /**
-     * Initialize the search engine. This initialization should be tailed
-     * towards your environment and needs.
-     *
-     * @param context the {@link ServletContext} for the Servlet
-     * @param config the {@link SRUServerConfig} object for this search engine
-     * @param queryParsersBuilder the {@link SRUQueryParserRegistry.Builder}
-     * object to be used for this search engine. Use to register additional
-     * query parsers with the {@link SRUServer}.
-     * @param params additional parameters gathered from the Servlet
-     * configuration and Servlet context.
-     * @throws SRUConfigException if an error occurred
-     *
-     * @see SimpleEndpointSearchEngineBase#doInit(ServletContext,
-     * SRUServerConfig, SRUQueryParserRegistry.Builder, Map)
-     */
+    /** Validate configuration once and create the per-instance connection pool and call gate. */
     @Override
-    protected void doInit(ServletContext context, SRUServerConfig config, SRUQueryParserRegistry.Builder queryParsersBuilder, Map<String, String> params) throws SRUConfigException {
-
-        LOGGER.info("SRUServlet::doInit {}", config.getPort());
-
-        /* register custom query parsers */
-        // queryParsersBuilder.register(new YourQLQueryParser());
-
-        /* load and store endpoint description */
+    protected void doInit(ServletContext context, SRUServerConfig config,
+            SRUQueryParserRegistry.Builder queryParsersBuilder, Map<String, String> params) throws SRUConfigException {
         endpointDescription = createEndpointDescription(context, config, params);
-
-        /* process endpoint description, load available PIDs */
         try {
-            pids = getCollectionsFromEndpointDescription(endpointDescription);
+            resourcePids = Set.copyOf(getCollectionsFromEndpointDescription(endpointDescription));
         } catch (SRUException e) {
-            throw new SRUConfigException("Error extracting resource pids", e);
+            throw new SRUConfigException("Unable to read the endpoint's root resources.", e);
         }
-        LOGGER.info("Got root resource PIDs: {}", pids);
-
-        /* set default corpus ID */
-        // or params.get("DEFAULT_RESOURCE_PID")
-        // defaultCorpusId = getEnvParam("DEFAULT_RESOURCE_PID");  // FIXME
         defaultCorpusId = params.get("DEFAULT_RESOURCE_PID");
-        LOGGER.info("Got defaultCorpusId resource PID: {}", defaultCorpusId);
-        if (defaultCorpusId == null || !pids.contains(defaultCorpusId)) {
-            throw new SRUConfigException("Parameter 'DEFAULT_RESOURCE_PID' contains unknown resource pid!");
+        if (defaultCorpusId == null || !resourcePids.contains(defaultCorpusId)) {
+            throw new SRUConfigException("DEFAULT_RESOURCE_PID must identify a root resource in the endpoint description.");
+        }
+        if (solrEndpoint == null || solrEndpoint.isBlank()) {
+            throw new SRUConfigException("DZP_FCS_SOLR_ENDPOINT must be configured.");
         }
 
-        LOGGER.info("DZP Solr Endpoint is " + dotenv.get("DZP_FCS_SOLR_ENDPOINT"));
-
-        // configure JsonPath to use Jackson 3
-        Configuration.setDefaults(new Configuration.Defaults() {
-
-            private final JsonProvider jsonProvider = new Jackson3JsonProvider();
-            private final MappingProvider mappingProvider = new Jackson3MappingProvider();
-
-            @Override
-            public JsonProvider jsonProvider() {
-                return jsonProvider;
-            }
-
-            @Override
-            public MappingProvider mappingProvider() {
-                return mappingProvider;
-            }
-
-            @Override
-            public Set<Option> options() {
-                return EnumSet.noneOf(Option.class);
-            }
-        });
-
-        this.dispatcher = new Dispatcher(Executors.newFixedThreadPool(128));
-        dispatcher.setMaxRequests(16);
-        dispatcher.setMaxRequestsPerHost(16);
-
-        this.client = new OkHttpClient().newBuilder()
-                .followRedirects(false)
-                .followSslRedirects(false)
-                .dispatcher(dispatcher)
-                .addInterceptor(new DdbApiIdentificationInterceptor(
-                        dotenv.get("DZP_FCS_CLIENT_ID", "dzp-fcs"),
-                        loadApplicationVersion(),
-                        dotenv.get("DZP_FCS_CONTACT_EMAIL", "m.buechner@dnb.de"),
-                        dotenv.get("DZP_FCS_CONTACT_URL", "https://github.com/mbuechner/dzp-fcs")))
-                .readTimeout(3, TimeUnit.MINUTES)
-                .build();
+        String version = loadApplicationVersion();
+        final BackendHttpSettings settings;
+        try {
+            HttpUrl.get(solrEndpoint);
+            settings = BackendHttpSettings.from(dotenv::get);
+            httpClient = new OkHttpClient.Builder()
+                    .followRedirects(false)
+                    .followSslRedirects(false)
+                    .retryOnConnectionFailure(true)
+                    .connectTimeout(settings.connectTimeout())
+                    .readTimeout(settings.readTimeout())
+                    .addInterceptor(new DdbApiIdentificationInterceptor(
+                            dotenv.get("DZP_FCS_CLIENT_ID", "dzp-fcs"), version,
+                            dotenv.get("DZP_FCS_CONTACT_EMAIL", "m.buechner@dnb.de"),
+                            dotenv.get("DZP_FCS_CONTACT_URL", "https://github.com/mbuechner/dzp-fcs")))
+                    .build();
+        } catch (IllegalArgumentException e) {
+            throw new SRUConfigException("Invalid DDB API configuration: " + e.getMessage(), e);
+        }
+        backend = new BackendRequestExecutor(httpClient, settings);
+        LOGGER.info("Search endpoint initialized: default corpus={}, root resources={}", defaultCorpusId, resourcePids);
+        LOGGER.info("Backend HTTP settings: request budget={}s, connect timeout={}s, read timeout={}s, "
+                + "max attempts={}, max concurrent requests={}, retry delay={}ms, max retry delay={}ms",
+                settings.requestTimeout().toSeconds(), settings.connectTimeout().toSeconds(),
+                settings.readTimeout().toSeconds(), settings.maxAttempts(), settings.maxConcurrentRequests(),
+                settings.retryDelay().toMillis(), settings.maxRetryDelay().toMillis());
     }
 
+    /** Release this endpoint's client resources when the servlet is stopped or redeployed. */
+    @Override
+    protected void doDestroy() {
+        if (httpClient != null) {
+            httpClient.dispatcher().cancelAll();
+            httpClient.dispatcher().executorService().shutdown();
+            httpClient.connectionPool().evictAll();
+        }
+    }
+
+    /** Maven filters this resource; API identification follows the actual application version. */
     private static String loadApplicationVersion() throws SRUConfigException {
         try (InputStream input = DzpEndpointSearchEngine.class.getResourceAsStream("/dzp-fcs.properties")) {
             if (input == null) {
-                throw new SRUConfigException("Missing application version resource 'dzp-fcs.properties'");
+                throw new SRUConfigException("Missing application version resource 'dzp-fcs.properties'.");
             }
             Properties application = new Properties();
             application.load(input);
             String version = application.getProperty("application.version");
             if (version == null || version.isBlank()) {
-                throw new SRUConfigException("Missing 'application.version' in dzp-fcs.properties");
+                throw new SRUConfigException("Missing 'application.version' in dzp-fcs.properties.");
             }
             return version;
         } catch (IOException e) {
-            throw new SRUConfigException("Unable to load the application version", e);
+            throw new SRUConfigException("Unable to load the application version.", e);
         }
     }
 
-    /**
-     * Handle a <em>searchRetrieve</em> operation.
-     *
-     * @param config
-     * @param request
-     * @param diagnostics
-     * @return
-     * @throws eu.clarin.sru.server.SRUException
-     * @see SR
-     */
+    /** Translate, validate and fetch one page; request telemetry includes failures and JSON decoding. */
     @Override
     public SRUSearchResultSet search(SRUServerConfig config, SRURequest request, SRUDiagnosticList diagnostics) throws SRUException {
-        /* parse and translate query */
-        final String myQuery = parseQuery(request);
-
-        /* validate params */
-        List<String> pids = parsePids(request);
-        pids = checkPids(pids, diagnostics);
-        LOGGER.debug("Search restricted to PIDs: {}", pids);
-        /* we restrict our search to the first PID (since most clients only request a single one?) */
-        final String pid = checkPid(pids);
-        LOGGER.debug("Search restricted to first PID: {}", pid);
-
-        final List<String> dataviews = parseDataViews(request, diagnostics, pid);
-        LOGGER.debug("Search requested dataviews: {}", dataviews);
-
-        final int startRecord = ((request.getStartRecord() < 1) ? 1 : request.getStartRecord()) - 1;
-        final int maximumRecords = request.getMaximumRecords();
-
-        // check for correct startRecord
-        String json = "";
-        final Request apiRequest01 = new Request.Builder()
-                .url(buildSearchUrl(dzpApi, myQuery, 0, 0))
-                .build();
-
-        try (final Response response01 = client.newCall(apiRequest01).execute()) {
-            json = response01.body().string();
-            if (!response01.isSuccessful()) {
-                throw new Exception("Response code of DDB-API is " + response01.code() + ". Request URL: " + response01.request().url().toString());
-            }
-        } catch (Exception e) {
-            throw new SRUException(SRUConstants.SRU_GENERAL_SYSTEM_ERROR, e.getMessage());
-        }
-
-        final ReadContext ctx01 = JsonPath.parse(json);
-        final Integer numFound = ctx01.read("$.response.numFound", Integer.class);
-
-        if (startRecord > numFound) {
-            throw new SRUException(SRUConstants.SRU_FIRST_RECORD_POSITION_OUT_OF_RANGE);
-        }
-
-        // query results
-        json = "";
-        final Request apiRequest02 = new Request.Builder()
-                .url(buildSearchUrl(dzpApi, myQuery, maximumRecords, startRecord))
-                .build();
-
-        try (final Response response02 = client.newCall(apiRequest02).execute()) {
-            json = response02.body().string();
-            if (!response02.isSuccessful()) {
-                throw new Exception("Response code of DDB-API is " + response02.code() + ". Request URL: " + response02.request().url().toString());
-            }
-        } catch (Exception e) {
-            throw new SRUException(SRUConstants.SRU_GENERAL_SYSTEM_ERROR, e.getMessage());
-        }
-
-        final ReadContext ctx02 = JsonPath.parse(json);
-
-        final List<ResultsEntry> docList = readResults(ctx02);
-
-        /* start search (query = myQuery, offset = startRecord, limit = maximumRecords) */
-        final Results results = new Results(pid, myQuery, docList, numFound, startRecord);
-
-        /* wrap results into custom SRUSearchResultSet */
-        return new DzpSRUSearchResultSet(request, diagnostics, results);
-    }
-
-    static HttpUrl buildSearchUrl(String endpoint, String query, int rows, int start) {
-        return HttpUrl.get(endpoint).newBuilder()
-                .setQueryParameter("df", "plainpagefulltext")
-                .setQueryParameter("fl", "id,pagenumber")
-                .setQueryParameter("hl.bs.separator", ".")
-                .setQueryParameter("hl.bs.type", "SENTENCE")
-                .setQueryParameter("hl.fl", "plainpagefulltext")
-                .setQueryParameter("hl.method", "unified")
-                .setQueryParameter("hl.simple.post", "</Hit>")
-                .setQueryParameter("hl.simple.pre", "<Hit>")
-                .setQueryParameter("hl", "true")
-                .setQueryParameter("q", query)
-                .setQueryParameter("rows", Integer.toString(rows))
-                .setQueryParameter("start", Integer.toString(start))
-                .build();
-    }
-
-    static List<ResultsEntry> readResults(ReadContext response) {
-        final List<ResultsEntry> documents = response.read("$.response.docs[*]", new TypeRef<List<ResultsEntry>>() {
-        });
-        final Map<String, Map<String, List<String>>> highlighting = readHighlights(response);
-        for (ResultsEntry document : documents) {
-            if (document.getId() == null || document.getId().isBlank()) {
-                continue;
-            }
-            final Map<String, List<String>> documentHighlights = highlighting.get(document.getId());
-            final List<String> snippets = documentHighlights == null ? null : documentHighlights.get("plainpagefulltext");
-            document.setPlainpagefulltext(snippets == null ? List.of() : snippets);
-        }
-        return documents;
-    }
-
-    private static Map<String, Map<String, List<String>>> readHighlights(ReadContext response) {
+        final long startedAt = System.nanoTime();
+        final Map<String, Object> logFields = new LinkedHashMap<>();
+        Level logLevel = Level.INFO;
+        Throwable unexpectedFailure = null;
         try {
-            final Map<String, Map<String, List<String>>> highlighting = response.read("$.highlighting",
-                    new TypeRef<Map<String, Map<String, List<String>>>>() {
-                    });
-            return highlighting == null ? Map.of() : highlighting;
-        } catch (PathNotFoundException e) {
-            return Map.of();
+            logFields.put("query", request.getQuery().getRawQuery());
+            logFields.put("queryType", request.getQueryType());
+            logFields.put("startRecord", request.getStartRecord());
+            logFields.put("maximumRecords", request.getMaximumRecords());
+            final String solrQuery = parseQuery(request);
+
+            final String pid = checkPid(checkPids(parsePids(request), diagnostics));
+            parseDataViews(request, diagnostics, pid);
+            final int startRecord = ((request.getStartRecord() < 1) ? 1 : request.getStartRecord()) - 1;
+            final int maximumRecords = request.getMaximumRecords();
+
+            final Results results = searchBackend(backend, solrEndpoint, pid, solrQuery, startRecord, maximumRecords);
+            final DzpSRUSearchResultSet resultSet = new DzpSRUSearchResultSet(request, diagnostics, results);
+            final int returnedRecords = results.getResults().size();
+            RequestTelemetry.searchReturned(results.getTotal(), returnedRecords);
+            logFields.put("outcome", "returned");
+            logFields.put("numFound", results.getTotal());
+            logFields.put("returnedRecords", returnedRecords);
+            logFields.put("corpus", pid);
+            return resultSet;
+        } catch (SRUException e) {
+            String diagnostic = e.getDiagnostic().getURI();
+            RequestTelemetry.searchFailed("diagnostic", diagnostic);
+            logFields.put("outcome", "diagnostic");
+            logFields.put("sruDiagnostic", diagnostic);
+            logFields.put("errorClass", e.getClass().getName());
+            logLevel = Level.WARN;
+            throw e;
+        } catch (RuntimeException | Error e) {
+            RequestTelemetry.searchFailed("exception", null);
+            logFields.put("outcome", "exception");
+            logFields.put("errorClass", e.getClass().getName());
+            logLevel = Level.ERROR;
+            unexpectedFailure = e;
+            throw e;
+        } finally {
+            long duration = System.nanoTime() - startedAt;
+            RequestTelemetry.searchFinished(duration);
+            logFields.put("searchDurationMs", RequestTelemetry.millis(duration));
+            StructuredLog.event(LOGGER, logLevel, "search.completed", logFields, unexpectedFailure);
         }
     }
 
     /**
-     * Extract and parse the query from the {@link SRURequest}.
-     *
-     * @param request the {@link SRURequest} with request parameters
-     * @return the raw query as String
-     * @throws SRUException if an error occurred trying to extract or to parse
-     * the query
-     *
-     * @see #search(SRUServerConfig, SRURequest, SRUDiagnosticList)
+     * Fetch and decode one response. Retries belong to the HTTP executor only;
+     * the parser preserves the caller's zero-based offset and range diagnostics.
      */
+    static Results searchBackend(BackendRequestExecutor backend, String endpoint, String pid, String query,
+            int startRecord, int maximumRecords) throws SRUException {
+        Request request = new Request.Builder().url(buildSearchUrl(endpoint, query, maximumRecords, startRecord)).build();
+        final String json;
+        try {
+            json = backend.execute(request);
+        } catch (Exception e) {
+            // HTTP exception messages can contain backend URLs or transport details.
+            // Keep the cause for server-side diagnosis without publishing it to clients.
+            throw new SRUException(SRUConstants.SRU_GENERAL_SYSTEM_ERROR,
+                    "DDB-API search request failed.", e);
+        }
+        return SolrResponseParser.parse(json, pid, query, startRecord);
+    }
+
+    /**
+     * Build the Solr search/highlighting parameters using URL encoding.
+     * Query text is a parameter value, so characters such as {@code &} cannot
+     * inject additional paging or highlighting parameters.
+     *
+     * <p>Only {@code id} and {@code pagenumber} are needed for the SRU output;
+     * the stored full text is read by Solr's highlighter, not transferred as a
+     * document field. Count-only requests disable highlighting and send a zero
+     * backend offset: with {@code rows=0}, a positive {@code start} can still make
+     * Solr collect an unnecessarily deep top-N result set. The original offset
+     * remains with the caller for SRU range checks and result metadata.
+     * Only this empty-page request uses Solr's built-in document-ID ordering to
+     * avoid relevance scoring. Regular pages retain their existing ranking.
+     * Sentence boundaries and the existing hit markers are preserved for pages.
+     * {@code hl.bs.separator} is deliberately absent: it only applies to the
+     * different {@code SEPARATOR} boundary mode.</p>
+     *
+     * <p>The response uses compact JSON without a redundant parameter echo.
+     * Formatting whitespace is removed only outside string values, preserving
+     * snippet contents. The response header remains available for query timing
+     * and partial-result diagnostics.</p>
+     *
+     * <p>Do not force {@code hl.offsetSource=POSTINGS}: the supplied backend schema
+     * has no stored offsets for {@code plainpagefulltext}. Unified highlighting
+     * chooses the available source automatically; faster indexed offsets require
+     * a backend schema change and a complete reindex.</p>
+     *
+     * @param endpoint Solr select endpoint
+     * @param query translated Solr query, before URL encoding
+     * @param rows requested page size
+     * @param start zero-based SRU offset; sent as zero for count-only requests
+     * @return encoded URL with one value per configured search parameter
+     */
+    static HttpUrl buildSearchUrl(String endpoint, String query, int rows, int start) {
+        final HttpUrl.Builder url = HttpUrl.get(endpoint).newBuilder()
+                .setQueryParameter("df", "plainpagefulltext")
+                .setQueryParameter("fl", "id,pagenumber")
+                .setQueryParameter("q", query)
+                .setQueryParameter("rows", Integer.toString(rows))
+                .setQueryParameter("start", Integer.toString(rows == 0 ? 0 : start))
+                .setQueryParameter("wt", "json")
+                .setQueryParameter("indent", "false")
+                .setQueryParameter("echoParams", "none")
+                .setQueryParameter("omitHeader", "false")
+                .setQueryParameter("hl", Boolean.toString(rows > 0));
+
+        if (rows == 0) {
+            // No documents are returned or merged, including in distributed search.
+            // _docid_ is a built-in sort; it needs no schema field or DocValues.
+            url.setQueryParameter("sort", "_docid_ asc");
+        } else if (rows > 0) {
+            url.setQueryParameter("hl.bs.type", "SENTENCE")
+                    .setQueryParameter("hl.fl", "plainpagefulltext")
+                    .setQueryParameter("hl.method", "unified")
+                    .setQueryParameter("hl.simple.post", "</Hit>")
+                    .setQueryParameter("hl.simple.pre", "<Hit>");
+        }
+        return url.build();
+    }
+
+    /** Translate the framework's parsed CQL tree without hiding its specific diagnostics. */
     protected String parseQuery(SRURequest request) throws SRUException {
         if (!request.isQueryType(Constants.FCS_QUERY_TYPE_CQL)) {
             throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN,
@@ -452,168 +334,73 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         }
     }
 
-    /**
-     * Extract and parse the requested resource PIDs from the
-     * {@link SRURequest}.
-     *
-     * Returns the list of resource PIDs if <code>x-fcs-context</code> parameter
-     * was used and it was non-empty. If no FCS context was set, then return
-     * with the <code>defaultCorpusId</code>.
-     *
-     * @param request the {@link SRURequest} with request parameters
-     * @return a list of String resource PIDs
-     * @throws eu.clarin.sru.server.SRUException
-     *
-     * @see #search(SRUServerConfig, SRURequest, SRUDiagnosticList)
-     */
-    protected List<String> parsePids(SRURequest request) throws SRUException {
-        boolean hasFcsContextCorpus = false;
-        String fcsContextCorpus = "";
-
-        for (String erd : request.getExtraRequestDataNames()) {
-            if (DzpConstants.X_FCS_CONTEXT_KEY.equals(erd)) {
-                hasFcsContextCorpus = true;
-                fcsContextCorpus = request.getExtraRequestData(DzpConstants.X_FCS_CONTEXT_KEY);
-                break;
-            }
+    /** An omitted or empty context selects the configured default corpus. */
+    protected List<String> parsePids(SRURequest request) {
+        String context = request.getExtraRequestData(DzpConstants.X_FCS_CONTEXT_KEY);
+        if (context == null || context.isEmpty()) {
+            return defaultCorpusId == null ? List.of() : List.of(defaultCorpusId);
         }
-        if (!hasFcsContextCorpus || "".equals(fcsContextCorpus)) {
-            LOGGER.debug("Received 'searchRetrieve' request without x-fcs-context - Using default '{}'",
-                    defaultCorpusId);
-            fcsContextCorpus = defaultCorpusId;
-        }
-        if (fcsContextCorpus == null) {
-            return new ArrayList<>();
-        }
-
-        List<String> selectedPids = new ArrayList<>(Arrays.asList(fcsContextCorpus.split(
-                DzpConstants.X_FCS_CONTEXT_SEPARATOR)));
-
-        return selectedPids;
+        return Arrays.asList(context.split(DzpConstants.X_FCS_CONTEXT_SEPARATOR));
     }
 
-    /**
-     * Validate the requested resource PIDs from the {@link SRURequest} against
-     * the list of resource PIDs declared in the servlet's
-     * {@link EndpointDescription}.
-     *
-     * Returns the list of valid resource PIDs. Generates SRU diagnostics for
-     * each invalid/unknown resource PID. If the list of valid PIDs is empty
-     * then raise an {@link SRUException}.
-     *
-     * @param pids the list of resource PIDs
-     * @param diagnostics the {@link SRUDiagnosticList} object for storing
-     * non-fatal diagnostics
-     * @return a list of String resource PIDs
-     * @throws SRUException if no valid resource PIDs left
-     *
-     * @see #search(SRUServerConfig, SRURequest, SRUDiagnosticList)
-     * @see #getCollectionsFromEndpointDescription(EndpointDescription)
-     * @see #parsePids(SRURequest)
-     */
-    protected List<String> checkPids(List<String> pids, SRUDiagnosticList diagnostics) throws SRUException {
-        // set valid and existing resource PIDs
+    /** Warn for each unknown PID; an entirely invalid context must not broaden the search. */
+    protected List<String> checkPids(List<String> requestedPids, SRUDiagnosticList diagnostics) throws SRUException {
         List<String> knownPids = new ArrayList<>();
-        for (String pid : pids) {
-            if (!DzpEndpointSearchEngine.pids.contains(pid)) {
-                // allow only valid resources that can be queried by CQL
-                diagnostics.addDiagnostic(Constants.FCS_DIAGNOSTIC_PERSISTENT_IDENTIFIER_INVALID, pid, "Resource PID for search is not valid or can not be queried by FCS/CQL!");
-            } else {
+        for (String pid : requestedPids) {
+            if (resourcePids.contains(pid)) {
                 knownPids.add(pid);
+            } else {
+                diagnostics.addDiagnostic(Constants.FCS_DIAGNOSTIC_PERSISTENT_IDENTIFIER_INVALID, pid,
+                        "Resource PID is unknown or not searchable by this endpoint.");
             }
         }
         if (knownPids.isEmpty()) {
-            // if search was restricted to resources but all were invalid, then do we fail?
-            // or do we adjust to our default corpus?
-            throw new SRUException(SRUConstants.SRU_UNSUPPORTED_PARAMETER_VALUE, "All values passed to '" + DzpConstants.X_FCS_CONTEXT_KEY + "' were not valid PIDs or can not be queried by FCS/CQL.");
+            throw new SRUException(SRUConstants.SRU_UNSUPPORTED_PARAMETER_VALUE,
+                    "No searchable resource was selected by x-fcs-context.");
         }
-
         return knownPids;
     }
 
-    /**
-     * Validate the requested resource PIDs from the {@link SRURequest} to be
-     * only a single PID as this endpoint can only handle searching through one
-     * resource at a time.
-     *
-     * NOTE: The CLARIN SRU/FCS Aggregator also only seems to request results
-     * for each resource separately, we only allow requests with one resource!
-     *
-     * Returns the resource PID. Raises an {@link SRUException} if more than one
-     * resource PID in <code>pids</code>.
-     *
-     * @param pids the list of resource PIDs
-     * @return the resource PID as String
-     * @throws SRUException if no valid resource PIDs left
-     *
-     * @see #search(SRUServerConfig, SRURequest, SRUDiagnosticList)
-     * @see #checkPids(List, SRUDiagnosticList)
-     */
+    /** This backend searches one corpus per request; never silently choose the first of several. */
     protected String checkPid(List<String> pids) throws SRUException {
-        // NOTE: we only search for first PID
-        // (FCS Aggregator only provides one resource PID per search request, so
-        // multiple PIDs should usually not happen)
-        final String pid;
         if (pids.size() > 1) {
-            throw new SRUException(SRUConstants.SRU_UNSUPPORTED_PARAMETER_VALUE, "Parameter '" + DzpConstants.X_FCS_CONTEXT_KEY + "' received multiple PIDs. Endpoint only supports a single PIDs for querying by CQL/FCS-QL/LexCQL.");
-        } else if (pids.isEmpty()) {
-            pid = defaultCorpusId;
-            LOGGER.debug("Falling back to default resource: {}", pid);
-            pids.add(pid);
-        } else {
-            pid = pids.get(0);
+            throw new SRUException(SRUConstants.SRU_UNSUPPORTED_PARAMETER_VALUE,
+                    "x-fcs-context must select a single resource.");
         }
-        return pid;
+        return pids.isEmpty() ? defaultCorpusId : pids.get(0);
     }
 
     /**
-     * Extract and parse the requested result Data Views from the
-     * {@link SRURequest}.
-     *
-     * Returns the list of Data View identifiers if <code>x-fcs-dataviews</code>
-     * parameter was used and is non-empty.
-     *
-     * Validates the requested Data Views against the ones declared in the
-     * servlet's {@link EndpointDescription} for the resource identified by the
-     * value in <code>pid</code>. For each non-valid Data View generate a SRU
-     * diagnostic.
-     *
-     * @param request the {@link SRURequest} with request parameters
-     * @param diagnostics the {@link SRUDiagnosticList} object for storing
-     * non-fatal diagnostics
-     * @param pid resource PID String, to validate requested Data Views
-     * @return a list of String Data View identifiers, may be empty
-     * @throws eu.clarin.sru.server.SRUException
-     *
-     * @see #search(SRUServerConfig, SRURequest, SRUDiagnosticList)
+     * Validate optional additional views and warn for each unavailable identifier.
+     * This basic endpoint always sends HITS; a selection does not suppress it.
      */
-    protected List<String> parseDataViews(SRURequest request, SRUDiagnosticList diagnostics, String pid) throws SRUException {
-        List<String> extraDataviews = new ArrayList<>();
-        if (request != null) {
-            for (String erd : request.getExtraRequestDataNames()) {
-                if (DzpConstants.X_FCS_DATAVIEWS_KEY.equals(erd)) {
-                    final String dvs = request.getExtraRequestData(DzpConstants.X_FCS_DATAVIEWS_KEY);
-                    extraDataviews = new ArrayList<>(
-                            Arrays.asList(dvs.split(DzpConstants.X_FCS_DATAVIEWS_SEPARATOR)));
-                    break;
-                }
-            }
+    protected List<String> parseDataViews(SRURequest request, SRUDiagnosticList diagnostics, String pid)
+            throws SRUException {
+        String selection = request == null ? null : request.getExtraRequestData(DzpConstants.X_FCS_DATAVIEWS_KEY);
+        if (selection == null || selection.isEmpty()) {
+            return List.of();
         }
-        if (extraDataviews.isEmpty()) {
-            return new ArrayList<>();
+        if (endpointDescription == null) {
+            throw new SRUException(SRUConstants.SRU_GENERAL_SYSTEM_ERROR, "Endpoint description is unavailable.");
         }
-
-        final Set<String> resourceDataViews = endpointDescription.getResourceList(pid).get(0).getAvailableDataViews().stream().map(DataView::getIdentifier).collect(Collectors.toSet());
-
-        final List<String> allowedDataViews = new ArrayList<>();
-        for (String dv : extraDataviews) {
-            if (!resourceDataViews.contains(dv)) {
-                // allow only valid dataviews for this resource that can be requested
-                diagnostics.addDiagnostic(Constants.FCS_DIAGNOSTIC_PERSISTENT_IDENTIFIER_INVALID, pid, "DataViews with identifier '" + dv + "' for resource PID='" + pid + "' is not valid!");
+        ResourceInfo resource = pid == null || pid.isBlank() || EndpointDescription.PID_ROOT.equals(pid)
+                ? null : endpointDescription.getResource(pid);
+        if (resource == null) {
+            throw new SRUException(Constants.FCS_DIAGNOSTIC_PERSISTENT_IDENTIFIER_INVALID, pid,
+                    "Resource PID is unknown.");
+        }
+        List<DataView> available = resource.getAvailableDataViews();
+        List<String> allowed = new ArrayList<>();
+        for (String view : selection.split(DzpConstants.X_FCS_DATAVIEWS_SEPARATOR)) {
+            boolean supported = available != null && available.stream()
+                    .anyMatch(candidate -> candidate != null && view.equals(candidate.getIdentifier()));
+            if (supported) {
+                allowed.add(view);
             } else {
-                allowedDataViews.add(dv);
+                diagnostics.addDiagnostic(Constants.FCS_DIAGNOSTIC_REQUESTED_DATA_VIEW_INVALID, view,
+                        "Requested DataView is not available for this resource.");
             }
         }
-        return allowedDataViews;
+        return allowed;
     }
 }
