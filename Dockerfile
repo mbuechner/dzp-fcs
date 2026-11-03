@@ -1,9 +1,9 @@
-FROM maven:3-amazoncorretto-21 AS mchain
+FROM maven:3-eclipse-temurin-25-noble AS mchain
 WORKDIR /tmp/
 COPY . .
 RUN mvn package;
 
-FROM tomcat:9-jre21
+FROM tomcat:9-jre25-temurin-noble
 LABEL maintainer="Michael Büchner <m.buechner@dnb.de>"
 
 # Default-Webapps raus

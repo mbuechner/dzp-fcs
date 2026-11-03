@@ -18,13 +18,20 @@ package de.ddb.labs.dzpfcs.searcher;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import lombok.Getter;
 import lombok.Setter;
+import okhttp3.HttpUrl;
 import org.apache.commons.text.StringEscapeUtils;
 
 public class ResultsEntry {
 
-    private final static String DZP_URL = "https://www.deutsche-digitale-bibliothek.de/newspaper/item/{{ddbid}}?query={{query}}&issuepage={{pagenumber}}";
+    private static final HttpUrl DZP_URL = new HttpUrl.Builder()
+            .scheme("https")
+            .host("www.deutsche-digitale-bibliothek.de")
+            .addPathSegment("newspaper")
+            .addPathSegment("item")
+            .build();
     @Getter
     @Setter
     private String id, pagenumber, paper_title;
@@ -57,9 +64,13 @@ public class ResultsEntry {
     }
 
     public String getDzpUrl(String query) {
-        return DZP_URL
-                .replace("{{ddbid}}", getDdbId())
-                .replace("{{query}}", query)
-                .replace("{{pagenumber}}", getPagenumber());
+        final HttpUrl.Builder url = DZP_URL.newBuilder()
+                .addPathSegment(getDdbId())
+                .addQueryParameter("query", Objects.requireNonNull(query));
+        final String pageNumber = getPagenumber();
+        if (pageNumber != null && !pageNumber.isBlank()) {
+            url.addQueryParameter("issuepage", pageNumber);
+        }
+        return url.build().toString();
     }
 }

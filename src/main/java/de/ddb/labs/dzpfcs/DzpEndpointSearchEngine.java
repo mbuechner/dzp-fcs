@@ -19,19 +19,23 @@ package de.ddb.labs.dzpfcs;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.Option;
+import com.jayway.jsonpath.PathNotFoundException;
 import com.jayway.jsonpath.ReadContext;
 import com.jayway.jsonpath.TypeRef;
-import com.jayway.jsonpath.spi.json.JacksonJsonProvider;
+import com.jayway.jsonpath.spi.json.Jackson3JsonProvider;
 import com.jayway.jsonpath.spi.json.JsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
+import com.jayway.jsonpath.spi.mapper.Jackson3MappingProvider;
 import com.jayway.jsonpath.spi.mapper.MappingProvider;
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.naming.InitialContext;
@@ -63,6 +67,7 @@ import java.util.EnumSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import okhttp3.Dispatcher;
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -82,19 +87,7 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
 
     private final Dotenv dotenv = Dotenv.load();
 
-    private final String dzp_api = dotenv.get("DZP_FCS_SOLR_ENDPOINT")
-            + "?df=plainpagefulltext"
-            + "&fl=id,paper_title,pagenumber"
-            + "&hl.bs.separator=."
-            + "&hl.bs.type=SENTENCE"
-            + "&hl.fl=plainpagefulltext"
-            + "&hl.method=unified"
-            + "&hl.simple.post=</Hit>"
-            + "&hl.simple.pre=<Hit>"
-            + "&hl=true"
-            + "&q={{query}}"
-            + "&rows={{rows}}"
-            + "&start={{start}}";
+    private final String dzpApi = dotenv.get("DZP_FCS_SOLR_ENDPOINT");
 
     private Dispatcher dispatcher = null;
 
@@ -255,11 +248,11 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
 
         LOGGER.info("DZP Solr Endpoint is " + dotenv.get("DZP_FCS_SOLR_ENDPOINT"));
 
-        // configure JsonPath to use Jackson
+        // configure JsonPath to use Jackson 3
         Configuration.setDefaults(new Configuration.Defaults() {
 
-            private final JsonProvider jsonProvider = new JacksonJsonProvider();
-            private final MappingProvider mappingProvider = new JacksonMappingProvider();
+            private final JsonProvider jsonProvider = new Jackson3JsonProvider();
+            private final MappingProvider mappingProvider = new Jackson3MappingProvider();
 
             @Override
             public JsonProvider jsonProvider() {
@@ -285,8 +278,30 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
                 .followRedirects(false)
                 .followSslRedirects(false)
                 .dispatcher(dispatcher)
+                .addInterceptor(new DdbApiIdentificationInterceptor(
+                        dotenv.get("DZP_FCS_CLIENT_ID", "dzp-fcs"),
+                        loadApplicationVersion(),
+                        dotenv.get("DZP_FCS_CONTACT_EMAIL", "m.buechner@dnb.de"),
+                        dotenv.get("DZP_FCS_CONTACT_URL", "https://github.com/mbuechner/dzp-fcs")))
                 .readTimeout(3, TimeUnit.MINUTES)
                 .build();
+    }
+
+    private static String loadApplicationVersion() throws SRUConfigException {
+        try (InputStream input = DzpEndpointSearchEngine.class.getResourceAsStream("/dzp-fcs.properties")) {
+            if (input == null) {
+                throw new SRUConfigException("Missing application version resource 'dzp-fcs.properties'");
+            }
+            Properties application = new Properties();
+            application.load(input);
+            String version = application.getProperty("application.version");
+            if (version == null || version.isBlank()) {
+                throw new SRUConfigException("Missing 'application.version' in dzp-fcs.properties");
+            }
+            return version;
+        } catch (IOException e) {
+            throw new SRUConfigException("Unable to load the application version", e);
+        }
     }
 
     /**
@@ -319,14 +334,9 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         final int maximumRecords = request.getMaximumRecords();
 
         // check for correct startRecord
-        final String apiQuery01 = dzp_api
-                .replace("{{query}}", myQuery)
-                .replace("{{rows}}", Integer.toString(0))
-                .replace("{{start}}", Integer.toString(0));
-
         String json = "";
         final Request apiRequest01 = new Request.Builder()
-                .url(apiQuery01)
+                .url(buildSearchUrl(dzpApi, myQuery, 0, 0))
                 .build();
 
         try (final Response response01 = client.newCall(apiRequest01).execute()) {
@@ -346,14 +356,9 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         }
 
         // query results
-        final String apiQuery02 = dzp_api
-                .replace("{{query}}", myQuery)
-                .replace("{{rows}}", Integer.toString(maximumRecords))
-                .replace("{{start}}", Integer.toString(startRecord));
-
         json = "";
         final Request apiRequest02 = new Request.Builder()
-                .url(apiQuery02)
+                .url(buildSearchUrl(dzpApi, myQuery, maximumRecords, startRecord))
                 .build();
 
         try (final Response response02 = client.newCall(apiRequest02).execute()) {
@@ -367,24 +372,56 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
 
         final ReadContext ctx02 = JsonPath.parse(json);
 
-        final List<ResultsEntry> docList = ctx02.read("$.response.docs[*]", new TypeRef<List<ResultsEntry>>() {
-        });
-
-        for (ResultsEntry doc : docList) {
-            if (doc.getId() == null || doc.getId().isBlank()) {
-                continue;
-            }
-            final String jsonQuery = "$.highlighting['" + doc.getId() + "'].plainpagefulltext[*]";
-            final List<String> list = ctx02.read(jsonQuery, new TypeRef<List<String>>() {
-            });
-            doc.setPlainpagefulltext(list);
-        }
+        final List<ResultsEntry> docList = readResults(ctx02);
 
         /* start search (query = myQuery, offset = startRecord, limit = maximumRecords) */
         final Results results = new Results(pid, myQuery, docList, numFound, startRecord);
 
         /* wrap results into custom SRUSearchResultSet */
         return new DzpSRUSearchResultSet(config, request, diagnostics, dataviews, results);
+    }
+
+    static HttpUrl buildSearchUrl(String endpoint, String query, int rows, int start) {
+        return HttpUrl.get(endpoint).newBuilder()
+                .setQueryParameter("df", "plainpagefulltext")
+                .setQueryParameter("fl", "id,paper_title,pagenumber")
+                .setQueryParameter("hl.bs.separator", ".")
+                .setQueryParameter("hl.bs.type", "SENTENCE")
+                .setQueryParameter("hl.fl", "plainpagefulltext")
+                .setQueryParameter("hl.method", "unified")
+                .setQueryParameter("hl.simple.post", "</Hit>")
+                .setQueryParameter("hl.simple.pre", "<Hit>")
+                .setQueryParameter("hl", "true")
+                .setQueryParameter("q", query)
+                .setQueryParameter("rows", Integer.toString(rows))
+                .setQueryParameter("start", Integer.toString(start))
+                .build();
+    }
+
+    static List<ResultsEntry> readResults(ReadContext response) {
+        final List<ResultsEntry> documents = response.read("$.response.docs[*]", new TypeRef<List<ResultsEntry>>() {
+        });
+        final Map<String, Map<String, List<String>>> highlighting = readHighlights(response);
+        for (ResultsEntry document : documents) {
+            if (document.getId() == null || document.getId().isBlank()) {
+                continue;
+            }
+            final Map<String, List<String>> documentHighlights = highlighting.get(document.getId());
+            final List<String> snippets = documentHighlights == null ? null : documentHighlights.get("plainpagefulltext");
+            document.setPlainpagefulltext(snippets == null ? List.of() : snippets);
+        }
+        return documents;
+    }
+
+    private static Map<String, Map<String, List<String>>> readHighlights(ReadContext response) {
+        try {
+            final Map<String, Map<String, List<String>>> highlighting = response.read("$.highlighting",
+                    new TypeRef<Map<String, Map<String, List<String>>>>() {
+                    });
+            return highlighting == null ? Map.of() : highlighting;
+        } catch (PathNotFoundException e) {
+            return Map.of();
+        }
     }
 
     /**

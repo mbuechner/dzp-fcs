@@ -47,7 +47,7 @@ public class CQLToSolrConverter {
                 throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN, "Queries with queryType 'cql' do not support index/relation on '" + node.getClass().getSimpleName() + "' by this FCS Endpoint.");
             }
             sb.append('"');
-            sb.append(tn.getTerm());
+            sb.append(tn.getTerm().replace("\\", "\\\\").replace("\"", "\\\""));
             sb.append('"');
         } else if (node instanceof CQLOrNode || node instanceof CQLAndNode) {
             final CQLBooleanNode bn = (CQLBooleanNode) node;

@@ -231,10 +231,12 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
         XMLStreamWriterHelper.writeStartResource(writer, results.getPid(), null);
         XMLStreamWriterHelper.writeStartResourceFragment(writer, result.getId(), result.getDzpUrl(results.getQuery()));
 
-        if (request != null && request.isQueryType(DzpConstants.SRU_QUERY_TYPE_LEX)) {
-            writeLexHitsDataview(writer, result);
-        } else {
-            writeHitsDataview(writer, result);
+        if (!result.getPlainpagefulltext().isEmpty()) {
+            if (request != null && request.isQueryType(DzpConstants.SRU_QUERY_TYPE_LEX)) {
+                writeLexHitsDataview(writer, result);
+            } else {
+                writeHitsDataview(writer, result);
+            }
         }
 
         XMLStreamWriterHelper.writeEndResourceFragment(writer);
@@ -293,29 +295,8 @@ public class DzpSRUSearchResultSet extends SRUSearchResultSet {
             final SAXParser parser = factory.newSAXParser();
 
             parser.parse(is, new DefaultHandler() {
-                public boolean isBlank(final String s) {
-                    // from: org.apache.logging.log4j.util.Strings.isBlank()
-                    if (s == null || s.isEmpty()) {
-                        return true;
-                    }
-                    for (int i = 0; i < s.length(); i++) {
-                        char c = s.charAt(i);
-                        if (!Character.isWhitespace(c)) {
-                            return false;
-                        }
-                    }
-                    return true;
-                }
-
                 @Override
                 public void characters(char[] ch, int start, int length) throws SAXException {
-                    // LOGGER.info("characters: {}", Arrays.copyOfRange(ch, start, start + length));
-                    // strip blanks
-                    // TODO: maybe with indent == 0, just check for single line-breaks after element ends?
-                    if (isBlank(new String(ch, start, length))) {
-                        return;
-                    }
-
                     try {
                         writer.writeCharacters(ch, start, length);
                     } catch (XMLStreamException e) {
