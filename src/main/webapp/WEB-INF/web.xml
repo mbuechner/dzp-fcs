@@ -52,7 +52,6 @@
             <param-name>eu.clarin.sru.server.allowOverrideIndentResponse</param-name>
             <param-value>true</param-value>
         </init-param>
-
         <!-- sru-server 1.14.0 emits legacy XCQL in SRU 2.0 echoes. The optional
              request echo is disabled until its upstream serializer is fixed. -->
         <init-param>
@@ -70,25 +69,27 @@
             <param-value>loc</param-value>
         </init-param>
 
-        <!-- mandatory SRU information -->
+        <!-- Public URL for Explain. Tomcat resolves these defaults even without
+             EnvironmentPropertySource; the container enables ENV overrides.
+             The entrypoint defaults PUBLIC_PATH to the deployed context path. -->
         <init-param>
             <param-name>eu.clarin.sru.server.database</param-name>
-            <param-value>app/dzp-fcs</param-value>
+            <param-value>${DZP_FCS_PUBLIC_PATH:-/}</param-value>
         </init-param>
 
         <init-param>
             <param-name>eu.clarin.sru.server.transport</param-name>
-            <param-value>https</param-value>
+            <param-value>${DZP_FCS_PUBLIC_TRANSPORT:-http}</param-value>
         </init-param>
         
         <init-param>
             <param-name>eu.clarin.sru.server.host</param-name>
-            <param-value>labs.deutsche-digitale-bibliothek.de</param-value>
+            <param-value>${DZP_FCS_PUBLIC_HOST:-localhost}</param-value>
         </init-param>
                         
         <init-param>
             <param-name>eu.clarin.sru.server.port</param-name>
-            <param-value>443</param-value>
+            <param-value>${DZP_FCS_PUBLIC_PORT:-8080}</param-value>
         </init-param>
 
         <load-on-startup>1</load-on-startup>
