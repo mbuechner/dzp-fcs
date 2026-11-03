@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2025 Michael Büchner, Deutsche Digitale Bibliothek
+ * Copyright 2023-2026 Michael Büchner, Deutsche Digitale Bibliothek
  *
  * This program is free software: you can redistribute it and/or modify 
  * it under the terms of the GNU General Public License as published by 
@@ -16,345 +16,158 @@
  */
 package de.ddb.labs.dzpfcs.endpoint;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamWriter;
 import de.ddb.labs.dzpfcs.model.Results;
+import de.ddb.labs.dzpfcs.model.ResultsEntry;
 import eu.clarin.sru.server.SRUConstants;
 import eu.clarin.sru.server.SRUDiagnostic;
 import eu.clarin.sru.server.SRUDiagnosticList;
 import eu.clarin.sru.server.SRUException;
 import eu.clarin.sru.server.SRURequest;
 import eu.clarin.sru.server.SRUSearchResultSet;
-import eu.clarin.sru.server.SRUServerConfig;
 import eu.clarin.sru.server.fcs.XMLStreamWriterHelper;
-import de.ddb.labs.dzpfcs.model.ResultsEntry;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.NoSuchElementException;
-import org.xml.sax.Attributes;
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.parsers.SAXParser;
-import javax.xml.parsers.SAXParserFactory;
-import org.xml.sax.SAXException;
-import org.xml.sax.helpers.DefaultHandler;
+import java.util.Objects;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamWriter;
 
 /**
- * A result set of a <em>searchRetrieve</em> operation. It it used to iterate
- * over the result set and provides a method to serialize the record in the
- * requested format.
- * <p>
- * A <code>SRUSearchResultSet</code> object maintains a cursor pointing to its
- * current record. Initially the cursor is positioned before the first record.
- * The <code>next</code> method moves the cursor to the next record, and because
- * it returns <code>false</code> when there are no more records in the
- * <code>SRUSearchResultSet</code> object, it can be used in a
- * <code>while</code> loop to iterate through the result set.
- * </p>
- * <p>
- * A required implemention for the target search engine.
- * </p>
- * <p>
- * This class only implements the minimal set of methods required to be a valid
- * implementation and to run.
- * </p>
+ * Iterates one backend page and serializes its mandatory FCS HITS representation.
  *
- * @see SRUSearchResultSet
- * @see <a href="http://www.loc.gov/standards/sru/specs/search-retrieve.html">
- * SRU Search Retrieve Operation</a>
+ * <p>Each instance belongs to one synchronous SRU request. Its cursor and prepared
+ * record are never shared between requests. The page has a stable list structure;
+ * its mutable backend DTOs are read only while preparing the current record.
+ * Preparation snapshots the ID, link and first snippet before any payload XML is
+ * written, so a bad record can become a surrogate without corrupting other hits.</p>
+ *
+ * <p>Only Basic Search/HITS is implemented. The first snippet and its first
+ * nonblank Hit are retained; later snippets never replace an unusable first one.
+ * Surrogates occupy their original record positions and leave counts unchanged.</p>
  */
-public class DzpSRUSearchResultSet extends SRUSearchResultSet {
+public final class DzpSRUSearchResultSet extends SRUSearchResultSet {
 
-    // private static final Logger LOGGER = LogManager.getLogger(DzpSRUSearchResultSet.class);
-
-    /**
-     * SRU Server Config, might be useful for response generation?
-     */
-    SRUServerConfig serverConfig = null;
+    private final String recordSchema;
+    private final Results results;
+    private int currentRecordCursor = -1;
+    private PreparedRecord preparedRecord;
 
     /**
-     * The SRU Request we generate our response for. Can be used to access
-     * requested parameters.
+     * @param request request whose normalized schema identifier is used; null selects FCS
+     * @param diagnostics request-scoped non-fatal diagnostic sink
+     * @param results stable backend page with its original total and zero-based offset
      */
-    SRURequest request = null;
-
-    /**
-     * The list of Data View identifiers we need to generate our response for.
-     */
-    private final Set<String> extraDataviews;
-
-    /**
-     * Results wrapper container for easy access to metadata (total count etc.)
-     */
-    private Results results; // FIXME: change to correct result object
-
-    /**
-     * The record cursor position for iterating through the result set.
-     */
-    private int currentRecordCursor = 0;
-
-    protected static final SAXParserFactory factory;
-
-    static {
-        factory = SAXParserFactory.newInstance();
-        factory.setNamespaceAware(true);
-        factory.setValidating(false);
-        factory.setXIncludeAware(false);
-    }
-
-    /**
-     * Constructor.
-     *
-     * @param serverConfig the {@link SRUServerConfig} object for this search
-     * engine
-     * @param request the {@link SRURequest} with request parameters
-     * @param diagnostics the {@link SRUDiagnosticList} object for storing
-     * non-fatal diagnostics
-     * @param dataviews a list of String Data View identifiers to generate
-     * responses for. May be empty but must not be <code>null</code>.
-     * @param results the actual results from the search engine
-     */
-    protected DzpSRUSearchResultSet(SRUServerConfig serverConfig, SRURequest request, SRUDiagnosticList diagnostics, List<String> dataviews, Results results) {
+    protected DzpSRUSearchResultSet(SRURequest request, SRUDiagnosticList diagnostics, Results results) {
         super(diagnostics);
-        this.serverConfig = serverConfig;
-        this.request = request;
-
-        this.results = results;
-        currentRecordCursor = -1;
-
-        extraDataviews = new HashSet<>(dataviews);
+        String requestedSchema = request == null ? null : request.getRecordSchemaIdentifier();
+        recordSchema = requestedSchema == null ? DzpConstants.CLARIN_FCS_RECORD_SCHEMA : requestedSchema;
+        this.results = Objects.requireNonNull(results, "results");
     }
 
-    /**
-     * An identifier for the current record by which it can unambiguously be
-     * retrieved in a subsequent operation.
-     *
-     * @return identifier for the record or <code>null</code> of none is
-     * available
-     * @throws NoSuchElementException result set is past all records
-     */
+    /** No SRU identifier lookup is advertised for the individual backend records. */
     @Override
     public String getRecordIdentifier() {
         return null;
     }
 
-    /**
-     * Serialize the current record in the requested format.
-     *
-     * @return
-     * @see #getRecordSchemaIdentifier()
-     */
+    /** The framework resolves supported short schema names before constructing this result set. */
     @Override
     public String getRecordSchemaIdentifier() {
-        return request.getRecordSchemaIdentifier() != null ? request.getRecordSchemaIdentifier() : DzpConstants.CLARIN_FCS_RECORD_SCHEMA;
+        return recordSchema;
     }
 
     /**
-     * Get surrogate diagnostic for current record. If this method returns a
-     * diagnostic, the writeRecord method will not be called. The default
-     * implementation returns <code>null</code>.
-     *
-     * @return a surrogate diagnostic or <code>null</code>
-     * @see
-     * <a href="https://github.com/clarin-eric/fcs-korp-endpoint/blob/ffccf7f65cc55744e1b1a8cebacce5485c530bda/src/main/java/se/gu/spraakbanken/fcs/endpoint/korp/KorpSRUSearchResultSet.java#L242-L253">
-     * Reference Implementation, Korp Endpoint</a>
+     * Return diagnostic 67 when this record cannot be represented in the requested
+     * schema. The framework then serializes the diagnostic instead of calling
+     * writeRecord; no placeholder text or invented Hit is sent.
      */
     @Override
     public SRUDiagnostic getSurrogateDiagnostic() {
-        if ((getRecordSchemaIdentifier() != null)
-                && !DzpConstants.CLARIN_FCS_RECORD_SCHEMA.equals(getRecordSchemaIdentifier())) {
-            return new SRUDiagnostic(SRUConstants.SRU_RECORD_NOT_AVAILABLE_IN_THIS_SCHEMA, getRecordSchemaIdentifier(), "Record is not available in record schema \"" + getRecordSchemaIdentifier() + "\".");
+        if (!DzpConstants.CLARIN_FCS_RECORD_SCHEMA.equals(recordSchema)) {
+            return unavailable("Record is not available in the requested schema.");
         }
-
-        return null;
+        return currentRecord().diagnostic();
     }
 
-    /**
-     * The number of records matched by the query. If the query fails this must
-     * be 0. If the search engine cannot determine the total number of matched
-     * by a query, it must return -1.
-     *
-     * @return the total number of results or 0 if the query failed or -1 if the
-     * search engine cannot determine the total number of results
-     */
+    /** The parser validates that the backend total fits the SRU framework's integer range. */
     @Override
     public int getTotalRecordCount() {
         return (int) results.getTotal();
     }
 
-    /**
-     * The number of records matched by the query but at most as the number of
-     * records requested to be returned (maximumRecords parameter). If the query
-     * fails this must be 0.
-     *
-     * @return the number of results or 0 if the query failed
-     */
+    /** Includes surrogate records, preserving the original backend page size. */
     @Override
     public int getRecordCount() {
         return results.getResults().size();
     }
 
-    /**
-     * Moves the cursor forward one record from its current position. A
-     * <code>SRUSearchResultSet</code> cursor is initially positioned before the
-     * first record; the first call to the method <code>next</code> makes the
-     * first record the current record; the second call makes the second record
-     * the current record, and so on.
-     * <p>
-     * When a call to the <code>next</code> method returns <code>false</code>,
-     * the cursor is positioned after the last record.
-     * </p>
-     *
-     * @return <code>true</code> if the new current record is valid;
-     * <code>false</code> if there are no more records
-     * @throws SRUException if an error occurred while fetching the next record
-     */
+    /** Move forward exactly once per backend record, including unavailable records. */
     @Override
     public boolean nextRecord() throws SRUException {
-        if (currentRecordCursor < (getRecordCount() - 1)) {
+        preparedRecord = null;
+        if (currentRecordCursor < getRecordCount() - 1) {
             currentRecordCursor++;
             return true;
         }
+        currentRecordCursor = getRecordCount();
         return false;
     }
 
     @Override
     public void writeRecord(XMLStreamWriter writer) throws XMLStreamException {
-        ResultsEntry result = results.getResults().get(currentRecordCursor);
-
-        XMLStreamWriterHelper.writeStartResource(writer, results.getPid(), null);
-        XMLStreamWriterHelper.writeStartResourceFragment(writer, result.getId(), result.getDzpUrl(results.getQuery()));
-
-        if (!result.getPlainpagefulltext().isEmpty()) {
-            if (request != null && request.isQueryType(DzpConstants.SRU_QUERY_TYPE_LEX)) {
-                writeLexHitsDataview(writer, result);
-            } else {
-                writeHitsDataview(writer, result);
-            }
+        PreparedRecord record = currentRecord();
+        if (!DzpConstants.CLARIN_FCS_RECORD_SCHEMA.equals(recordSchema) || record.diagnostic() != null) {
+            // Guard direct callers too, before writing even the first Resource element.
+            throw new XMLStreamException("Record requires an SRU surrogate diagnostic.");
         }
 
+        XMLStreamWriterHelper.writeStartResource(writer, results.getPid(), null);
+        XMLStreamWriterHelper.writeStartResourceFragment(writer, record.id(), record.reference());
+        writeHitsDataView(writer, record.snippet());
         XMLStreamWriterHelper.writeEndResourceFragment(writer);
         XMLStreamWriterHelper.writeEndResource(writer);
     }
 
-    protected void writeHitsDataview(XMLStreamWriter writer, ResultsEntry result) throws XMLStreamException {
-        XMLStreamWriterHelper.writeStartDataView(writer, DzpConstants.FCS_HITS_MIMETYPE);
-        writer.setPrefix(DzpConstants.FCS_HITS_PREFIX, DzpConstants.FCS_HITS_NS);
-        writer.writeStartElement(DzpConstants.FCS_HITS_NS, "Result");
-        writer.writeNamespace(DzpConstants.FCS_HITS_PREFIX, DzpConstants.FCS_HITS_NS);
-
-        writeSolrHitsDataviewBytedXMLDoc(writer, result.getPlainpagefulltext().get(0));
-
-        writer.writeEndElement(); // "Result" element
-        XMLStreamWriterHelper.writeEndDataView(writer);
-    }
-
-    /**
-     * Source
-     * https://gist.github.com/Querela/825a084f94b30de88827050eddc8e361#file-sawsrusearchresultset-java-L137-L262
-     *
-     * @param writer
-     * @param result
-     * @throws XMLStreamException
-     */
-    protected void writeLexHitsDataview(XMLStreamWriter writer, ResultsEntry result) throws XMLStreamException {
-        XMLStreamWriterHelper.writeStartDataView(writer, DzpConstants.FCS_HITS_MIMETYPE);
-        writer.setPrefix(DzpConstants.FCS_HITS_PREFIX, DzpConstants.FCS_HITS_NS);
-        writer.writeStartElement(DzpConstants.FCS_HITS_NS, "Result");
-        writer.writeNamespace(DzpConstants.FCS_HITS_PREFIX, DzpConstants.FCS_HITS_NS);
-
-        writeSolrHitsDataviewBytedXMLDoc(writer, result.getPlainpagefulltext().get(0));
-
-        writer.writeEndElement(); // "Result" element
-        XMLStreamWriterHelper.writeEndDataView(writer);
-    }
-
-    /**
-     * Helper method for
-     * {@link #writeLexHitsDataview(XMLStreamWriter, ResultEntry)} and
-     * {@link #writeHitsDataview(XMLStreamWriter, ResultEntry)} to write an XML
-     * string to output. Also adds the <code>hits:</code> prefixes.
-     *
-     * @param writer
-     * @param text
-     * @throws XMLStreamException
-     */
-    protected static void writeSolrHitsDataviewBytedXMLDoc(XMLStreamWriter writer, String text) throws XMLStreamException {
-        final String marker = "writeSolrHitsDataviewBytedXMLDoc";
-
-        try {
-
-            final InputStream is = new ByteArrayInputStream(("<" + marker + ">" + text + "</" + marker + ">").getBytes(StandardCharsets.UTF_8));
-
-            final SAXParser parser = factory.newSAXParser();
-
-            parser.parse(is, new DefaultHandler() {
-                @Override
-                public void characters(char[] ch, int start, int length) throws SAXException {
-                    try {
-                        writer.writeCharacters(ch, start, length);
-                    } catch (XMLStreamException e) {
-                        throw new SAXException(e);
-                    }
-                }
-
-                @Override
-                public void endElement(String uri, String localName, String qName) throws SAXException {
-                    if (qName.equals(marker)) {
-                        return;
-                    }
-                    try {
-                        writer.writeEndElement();
-                    } catch (XMLStreamException e) {
-                        throw new SAXException(e);
-                    }
-                }
-
-                private final Map<String, String> prefixes = new HashMap<>();
-
-                @Override
-                public void startPrefixMapping(String prefix, String uri) throws SAXException {
-                    super.startPrefixMapping(prefix, uri);
-                    // writer.writeNamespace(prefix, uri);
-                    prefixes.put(prefix, uri);
-                }
-
-                @Override
-                public void startElement(String uri, String localName, String qName, Attributes attributes)
-                        throws SAXException {
-                    if (qName.equals(marker)) {
-                        return;
-                    }
-                    try {
-                        if (qName.equals("Hit")) {
-                            writer.writeStartElement(DzpConstants.FCS_HITS_NS, qName);
-                        } else {
-                            writer.writeStartElement(qName);
-                            // writer.writeStartElement(qName, localName, uri);
-                        }
-                        if (!prefixes.isEmpty()) {
-                            for (Map.Entry<String, String> entry : prefixes.entrySet()) {
-                                writer.writeNamespace(entry.getKey(), entry.getValue());
-                            }
-                            prefixes.clear();
-                        }
-
-                        for (int i = 0; i < attributes.getLength(); i++) {
-                            writer.writeAttribute(attributes.getQName(i), attributes.getValue(i));
-                        }
-                    } catch (XMLStreamException e) {
-                        throw new SAXException(e);
-                    }
-                }
-            });
-        } catch (ParserConfigurationException | SAXException | IOException e) {
-            throw new XMLStreamException(e);
+    /** Prepare once per cursor; missing snippets and invalid IDs do not remove a result position. */
+    private PreparedRecord currentRecord() {
+        if (currentRecordCursor < 0 || currentRecordCursor >= getRecordCount()) {
+            throw new NoSuchElementException("Result cursor is not positioned on a record.");
         }
+        if (preparedRecord == null) {
+            ResultsEntry entry = results.getResults().get(currentRecordCursor);
+            try {
+                // URL/ID validation precedes all output, not just the snippet check.
+                String reference = entry.getDzpUrl(results.getQuery());
+                if (entry.getPlainpagefulltext().isEmpty()) {
+                    preparedRecord = new PreparedRecord(null, null, null,
+                            unavailable("Record has no highlighted snippet for the mandatory FCS HITS view."));
+                } else {
+                    preparedRecord = new PreparedRecord(entry.getId(), reference,
+                            SnippetWriter.prepare(entry.getPlainpagefulltext().get(0)), null);
+                }
+            } catch (XMLStreamException | IllegalArgumentException invalidRecord) {
+                preparedRecord = new PreparedRecord(null, null, null,
+                        unavailable("Record has an invalid identifier or highlighted snippet for the FCS HITS view."));
+            }
+        }
+        return preparedRecord;
+    }
+
+    private SRUDiagnostic unavailable(String message) {
+        return new SRUDiagnostic(SRUConstants.SRU_RECORD_NOT_AVAILABLE_IN_THIS_SCHEMA, recordSchema, message);
+    }
+
+    private static void writeHitsDataView(XMLStreamWriter writer, SnippetWriter.PreparedSnippet snippet)
+            throws XMLStreamException {
+        XMLStreamWriterHelper.writeStartDataView(writer, DzpConstants.FCS_HITS_MIMETYPE);
+        writer.setPrefix(DzpConstants.FCS_HITS_PREFIX, DzpConstants.FCS_HITS_NS);
+        writer.writeStartElement(DzpConstants.FCS_HITS_NS, "Result");
+        writer.writeNamespace(DzpConstants.FCS_HITS_PREFIX, DzpConstants.FCS_HITS_NS);
+        snippet.write(writer);
+        writer.writeEndElement();
+        XMLStreamWriterHelper.writeEndDataView(writer);
+    }
+
+    /** All fields belong to the same cursor position and remain unchanged during serialization. */
+    private record PreparedRecord(String id, String reference, SnippetWriter.PreparedSnippet snippet,
+            SRUDiagnostic diagnostic) {
     }
 }

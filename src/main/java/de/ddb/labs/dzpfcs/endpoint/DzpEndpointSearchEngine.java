@@ -380,13 +380,13 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
         final Results results = new Results(pid, myQuery, docList, numFound, startRecord);
 
         /* wrap results into custom SRUSearchResultSet */
-        return new DzpSRUSearchResultSet(config, request, diagnostics, dataviews, results);
+        return new DzpSRUSearchResultSet(request, diagnostics, results);
     }
 
     static HttpUrl buildSearchUrl(String endpoint, String query, int rows, int start) {
         return HttpUrl.get(endpoint).newBuilder()
                 .setQueryParameter("df", "plainpagefulltext")
-                .setQueryParameter("fl", "id,paper_title,pagenumber")
+                .setQueryParameter("fl", "id,pagenumber")
                 .setQueryParameter("hl.bs.separator", ".")
                 .setQueryParameter("hl.bs.type", "SENTENCE")
                 .setQueryParameter("hl.fl", "plainpagefulltext")

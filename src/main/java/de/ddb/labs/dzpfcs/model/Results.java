@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2025 Michael Büchner, Deutsche Digitale Bibliothek
+ * Copyright 2023-2026 Michael Büchner, Deutsche Digitale Bibliothek
  *
  * This program is free software: you can redistribute it and/or modify 
  * it under the terms of the GNU General Public License as published by 
@@ -16,31 +16,36 @@
  */
 package de.ddb.labs.dzpfcs.model;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import lombok.Getter;
 
-public class Results {
+/**
+ * One result page with a stable, read-only list structure. The list is copied
+ * once on construction; its entries remain request-scoped mutable DTOs.
+ */
+@Getter
+public final class Results {
 
-    @Getter
     private final String pid;
-    @Getter
     private final String query;
     private final List<ResultsEntry> results;
-    @Getter
     private final long total;
-    @Getter
     private final long offset;
 
     public Results(String pid, String query, List<ResultsEntry> results, long total, long offset) {
-        this.pid = pid;
-        this.query = query;
-        this.results = results;
+        this.pid = Objects.requireNonNull(pid, "pid");
+        this.query = Objects.requireNonNull(query, "query");
+        this.results = List.copyOf(results);
         this.total = total;
         this.offset = offset;
     }
 
+    /**
+     * Return the stored page without copying it. Constant-time size/index access
+     * keeps SRU iteration linear instead of copying the whole page per record.
+     */
     public List<ResultsEntry> getResults() {
-        return new ArrayList<>(results);
+        return results;
     }
 }

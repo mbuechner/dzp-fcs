@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2025 Michael Büchner, Deutsche Digitale Bibliothek
+ * Copyright 2023-2026 Michael Büchner, Deutsche Digitale Bibliothek
  *
  * This program is free software: you can redistribute it and/or modify 
  * it under the terms of the GNU General Public License as published by 
@@ -16,14 +16,17 @@
  */
 package de.ddb.labs.dzpfcs.model;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.Setter;
 import okhttp3.HttpUrl;
-import org.apache.commons.text.StringEscapeUtils;
 
+/**
+ * Mutable backend document mapped and enriched within one search request.
+ * Instances are not shared or mutated concurrently. Snippet lists are immutable
+ * snapshots; XML normalization belongs to the output layer rather than this DTO.
+ */
 public class ResultsEntry {
 
     private static final HttpUrl DZP_URL = new HttpUrl.Builder()
@@ -34,35 +37,46 @@ public class ResultsEntry {
             .build();
     @Getter
     @Setter
-    private String id, pagenumber, paper_title;
-    private final List<String> plainpagefulltext = new ArrayList<>();
+    private String id;
+    @Getter
+    @Setter
+    private String pagenumber;
+    private List<String> plainpagefulltext = List.of();
 
+    /** Raw backend snippets, exposed read-only without allocating a copy. */
     public List<String> getPlainpagefulltext() {
-        return new ArrayList<>(plainpagefulltext);
+        return plainpagefulltext;
     }
 
-    public void setPlainpagefulltext(List<String> ppft) {
-        plainpagefulltext.clear();
-
-        for (String v : ppft) {
-            String t = StringEscapeUtils.escapeXml11(v);
-            t = t.replaceFirst("&lt;Hit&gt;", "<Hit>");
-            t = t.replaceFirst("&lt;/Hit&gt;", "</Hit>");
-            t = t.replaceAll("&lt;Hit&gt;", "");
-            t = t.replaceAll("&lt;/Hit&gt;", "");
-            plainpagefulltext.add(t);
-        }
+    /**
+     * Keep the original text in an immutable snapshot. XML escaping and hit
+     * interpretation belong to the output writer, avoiding repeated escaping
+     * and parsing in this DTO. Previously returned snapshots remain unchanged;
+     * the DTO's setters remain request-confined.
+     */
+    public void setPlainpagefulltext(List<String> snippets) {
+        plainpagefulltext = List.copyOf(snippets);
     }
 
-    @Override
-    public String toString() {
-        return ("[id=" + id + ", pagenumber=" + pagenumber + ", paper_title=" + paper_title + ", plainpagefulltext=" + plainpagefulltext.toString() + "]");
-    }
-
+    /**
+     * The first 32 UTF-16 units are the portal item identifier; any remaining
+     * suffix identifies the backend page. Reject unusable IDs instead of failing
+     * halfway through XML serialization or silently changing their characters.
+     */
     public String getDdbId() {
-        return id.substring(0, 32);
+        String value = id;
+        if (value == null || value.length() < 32) {
+            throw new IllegalArgumentException("Backend result ID must contain a 32-character item identifier.");
+        }
+        validateXmlIdentifier(value);
+        String itemId = value.substring(0, 32);
+        if (itemId.isBlank() || Character.isHighSurrogate(itemId.charAt(31))) {
+            throw new IllegalArgumentException("Backend result ID has an unusable item identifier.");
+        }
+        return itemId;
     }
 
+    /** Construct a landing-page link with independently encoded query and optional page parameters. */
     public String getDzpUrl(String query) {
         final HttpUrl.Builder url = DZP_URL.newBuilder()
                 .addPathSegment(getDdbId())
@@ -72,5 +86,19 @@ public class ResultsEntry {
             url.addQueryParameter("issuepage", pageNumber);
         }
         return url.build().toString();
+    }
+
+    /** IDs are also emitted unchanged as XML attributes, so stripping invalid characters is unsafe. */
+    private static void validateXmlIdentifier(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char current = value.charAt(i);
+            if (Character.isHighSurrogate(current) && i + 1 < value.length()
+                    && Character.isLowSurrogate(value.charAt(i + 1))) {
+                i++;
+            } else if (Character.isSurrogate(current) || current == '\uFFFE' || current == '\uFFFF'
+                    || (current < 0x20 && current != '\t' && current != '\n' && current != '\r')) {
+                throw new IllegalArgumentException("Backend result ID contains a character forbidden in XML 1.0.");
+            }
+        }
     }
 }

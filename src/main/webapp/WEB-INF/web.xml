@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xmlns="http://java.sun.com/xml/ns/javaee"
-         xmlns:web="http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd"
-         xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd"
-         id="TEXTPLUS_SAW_FCS" version="2.5">
+         xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
+         id="DZP_FCS" version="4.0">
     <display-name>German newspaper portal SRU/CQL FCS 2.0 Endpoint</display-name>
     <description>SRU/CQL FCS 2.0 FCS Endpoint Service for the German newspaper portal</description>
 
@@ -41,6 +40,13 @@
         <init-param>
             <param-name>eu.clarin.sru.server.allowOverrideIndentResponse</param-name>
             <param-value>true</param-value>
+        </init-param>
+
+        <!-- sru-server 1.14.0 emits legacy XCQL in SRU 2.0 echoes. The optional
+             request echo is disabled until its upstream serializer is fixed. -->
+        <init-param>
+            <param-name>eu.clarin.sru.server.echoRequests</param-name>
+            <param-value>false</param-value>
         </init-param>
 
         <!-- To enable SRU 2.0 for FCS 2.0 -->
@@ -81,4 +87,8 @@
         <servlet-name>SRU/CQL</servlet-name>
         <url-pattern>/*</url-pattern>
     </servlet-mapping>
+
+    <!-- Decode form requests as UTF-8 when the client omits a charset.
+         An explicitly supplied request charset still takes precedence. -->
+    <request-character-encoding>UTF-8</request-character-encoding>
 </web-app>

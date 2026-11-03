@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2025 Michael Büchner, Deutsche Digitale Bibliothek
+ * Copyright 2023-2026 Michael Büchner, Deutsche Digitale Bibliothek
  *
  * This program is free software: you can redistribute it and/or modify 
  * it under the terms of the GNU General Public License as published by 
@@ -16,7 +16,11 @@
  */
 package de.ddb.labs.dzpfcs.endpoint;
 
+/** Request parameter names and wire identifiers for the supported Basic Search/HITS profile. */
 public final class DzpConstants {
+
+    private DzpConstants() {
+    }
 
     // FCS request parameters to extract Resource PIDs
     public static final String X_FCS_CONTEXT_KEY = "x-fcs-context";
@@ -25,9 +29,6 @@ public final class DzpConstants {
     public static final String X_FCS_DATAVIEWS_KEY = "x-fcs-dataviews";
     public static final String X_FCS_DATAVIEWS_SEPARATOR = ",";
     public static final String CLARIN_FCS_RECORD_SCHEMA = "http://clarin.eu/fcs/resource";
-    // Resource Advanced DataView Layer base URI
-    public static final String LAYER_PREFIX = "https://www.deutsche-digiatele-biliothek.de/newspaper";
-    public static final String SRU_QUERY_TYPE_LEX = "lex";
     public static final String FCS_HITS_MIMETYPE = "application/x-clarin-fcs-hits+xml";
     public static final String FCS_HITS_PREFIX = "hits";
     public static final String FCS_HITS_NS = "http://clarin.eu/fcs/dataview/hits";

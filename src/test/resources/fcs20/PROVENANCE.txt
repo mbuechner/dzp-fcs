@@ -1,0 +1,21 @@
+Unmodified official CLARIN-FCS 2.0 schemas used for offline regression tests.
+
+Repository: https://github.com/clarin-eric/fcs-misc
+Commit: dbc795dc5cc1a6e7ecc52bda3fcaa1fdefeccc48 (2023-06-29)
+Paths: fcs-core-2.0/attachments/Resource.xsd
+       fcs-core-2.0/attachments/DataView-Hits.xsd
+
+Resource.xsd
+URL: https://raw.githubusercontent.com/clarin-eric/fcs-misc/dbc795dc5cc1a6e7ecc52bda3fcaa1fdefeccc48/fcs-core-2.0/attachments/Resource.xsd
+SHA256: 70c36e7ae1a362a6db4b90d529c5f9d46cd06319a27f03e476cd9f361880258c
+
+DataView-Hits.xsd
+URL: https://raw.githubusercontent.com/clarin-eric/fcs-misc/dbc795dc5cc1a6e7ecc52bda3fcaa1fdefeccc48/fcs-core-2.0/attachments/DataView-Hits.xsd
+SHA256: ec5a7729b80a7a4da1ab3e9b2f4ae3254c56e7fab2e944269baf0f941655904a
+
+Resource.xsd permits an empty ResourceFragment, while the normative FCS profile
+requires HITS for a normal hit record. DataView-Hits.xsd requires at least one
+Hit element; its xs:string type does not itself forbid an empty Hit. Regression
+tests therefore cover both XSD validation and these additional profile rules.
+
+https://github.com/clarin-eric/fcs-misc/blob/dbc795dc5cc1a6e7ecc52bda3fcaa1fdefeccc48/fcs-core-2.0/interface-specification.adoc

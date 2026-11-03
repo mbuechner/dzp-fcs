@@ -56,7 +56,7 @@ class DzpEndpointSearchEngineTest {
         assertEquals("<Hit>", url.queryParameter("hl.simple.pre"));
         assertEquals("</Hit>", url.queryParameter("hl.simple.post"));
         assertEquals("plainpagefulltext", url.queryParameter("df"));
-        assertEquals("id,paper_title,pagenumber", url.queryParameter("fl"));
+        assertEquals("id,pagenumber", url.queryParameter("fl"));
         assertEquals("true", url.queryParameter("hl"));
     }
 
@@ -112,7 +112,7 @@ class DzpEndpointSearchEngineTest {
 
         assertEquals(List.of("first", "second", "quote'id"),
                 records.stream().map(ResultsEntry::getId).toList());
-        assertEquals(List.of("<Hit>Berlin</Hit> &amp; Hamburg"), records.get(0).getPlainpagefulltext());
+        assertEquals(List.of("<Hit>Berlin</Hit> & Hamburg"), records.get(0).getPlainpagefulltext());
         assertTrue(records.get(1).getPlainpagefulltext().isEmpty());
         assertEquals(List.of("<Hit>München</Hit>"), records.get(2).getPlainpagefulltext());
     }
