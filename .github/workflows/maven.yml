@@ -18,11 +18,13 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7.0.1
     - name: Set up JDK 25 LTS
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v6.1.0
       with:
         java-version: '25'
         distribution: 'temurin'
@@ -30,6 +32,21 @@ jobs:
     - name: Build with Maven
       run: mvn -B package --file pom.xml
 
-    # Optional: Uploads the full dependency graph to GitHub to improve the quality of Dependabot alerts this repository can receive
+  dependency-submission:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v7.0.1
+    - name: Set up JDK 25 LTS
+      uses: actions/setup-java@v6.1.0
+      with:
+        java-version: '25'
+        distribution: 'temurin'
+        cache: maven
+    # Upload the dependency graph after a successful push build.
     - name: Update dependency graph
-      uses: advanced-security/maven-dependency-submission-action@v5
+      uses: advanced-security/maven-dependency-submission-action@v6.0.1
