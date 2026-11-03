@@ -1,0 +1,8 @@
+# Build output and local test runtimes must never enter the Maven build stage.
+target/
+.git/
+.idea/
+.vscode/
+.agents/
+.codex/
+*.log
