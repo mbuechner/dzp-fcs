@@ -437,28 +437,19 @@ public class DzpEndpointSearchEngine extends SimpleEndpointSearchEngineBase {
      * @see #search(SRUServerConfig, SRURequest, SRUDiagnosticList)
      */
     protected String parseQuery(SRURequest request) throws SRUException {
-        final String myQuery;
-        if (request.isQueryType(Constants.FCS_QUERY_TYPE_CQL)) {
-            /*
-             * Got a CQL query (either SRU 1.1 or higher).
-             * Translate to a proper MYQUERY query ...
-             */
-            final CQLQueryParser.CQLQuery q = request.getQuery(CQLQueryParser.CQLQuery.class);
-            LOGGER.info("FCS-CQL query: {}", q.getRawQuery());
-
-            try {
-                myQuery = CQLToSolrConverter.convertCQLtoSolrQuery(q.getParsedQuery());
-                LOGGER.debug("Converted Solr: {}", myQuery);
-            } catch (Exception e) {
-                throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN, "Converting query with queryType 'cql' to MYQUERY failed.", e);
-            }
-        } else {
-            /*
-             * Got something else we don't support. Send error ...
-             */
-            throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN, "Queries with queryType '" + request.getQueryType() + "' are not supported by this FCS Endpoint.");
+        if (!request.isQueryType(Constants.FCS_QUERY_TYPE_CQL)) {
+            throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN,
+                    "Only CQL queries are supported by this endpoint.");
         }
-        return myQuery;
+        try {
+            CQLQueryParser.CQLQuery query = request.getQuery(CQLQueryParser.CQLQuery.class);
+            return CQLToSolrConverter.convertCQLtoSolrQuery(query.getParsedQuery());
+        } catch (SRUException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new SRUException(SRUConstants.SRU_CANNOT_PROCESS_QUERY_REASON_UNKNOWN,
+                    "Unable to translate the CQL query.", e);
+        }
     }
 
     /**

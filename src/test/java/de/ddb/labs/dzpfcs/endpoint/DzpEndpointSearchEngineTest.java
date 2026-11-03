@@ -15,6 +15,21 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import eu.clarin.sru.server.CQLQueryParser;
+import eu.clarin.sru.server.SRUConstants;
+import eu.clarin.sru.server.SRUDiagnostic;
+import eu.clarin.sru.server.SRUException;
+import eu.clarin.sru.server.SRUQuery;
+import eu.clarin.sru.server.SRURequest;
+import eu.clarin.sru.server.SRUVersion;
+import eu.clarin.sru.server.fcs.Constants;
+import eu.clarin.sru.server.fcs.EndpointDescription;
+import eu.clarin.sru.server.fcs.utils.SimpleEndpointDescriptionParser;
+import java.lang.reflect.Proxy;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Map;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DzpEndpointSearchEngineTest {
 
@@ -104,5 +119,30 @@ class DzpEndpointSearchEngineTest {
 
     private static List<ResultsEntry> readResults(String json) {
         return DzpEndpointSearchEngine.readResults(JsonPath.using(JSON_CONFIGURATION).parse(json));
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "fcs.words = \"Berlin\"|info:srw/diagnostic/1/16",
+        "cql.serverChoice any \"Berlin Hamburg\"|info:srw/diagnostic/1/19",
+        "cql.serverChoice all \"Berlin Hamburg\"|info:srw/diagnostic/1/19",
+        "cql.serverChoice =/relevant \"Berlin\"|info:srw/diagnostic/1/20"
+    })
+    void preservesSpecificConverterDiagnosticsAtTheSearchEngineBoundary(String query, String diagnostic) {
+        List<SRUDiagnostic> parserDiagnostics = new ArrayList<>();
+        SRUQuery<?> parsed = new CQLQueryParser().parseQuery(SRUVersion.VERSION_1_2, Map.of("query", query),
+                (uri, details, message) -> parserDiagnostics.add(new SRUDiagnostic(uri, details, message)));
+        assertTrue(parserDiagnostics.isEmpty());
+        SRURequest request = (SRURequest) Proxy.newProxyInstance(SRURequest.class.getClassLoader(),
+                new Class<?>[]{SRURequest.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "isQueryType" -> Constants.FCS_QUERY_TYPE_CQL.equals(args[0]);
+                    case "getQuery" -> parsed;
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
+
+        SRUException failure = assertThrows(SRUException.class,
+                () -> new DzpEndpointSearchEngine().parseQuery(request));
+
+        assertEquals(diagnostic, failure.getDiagnostic().getURI());
     }
 }
