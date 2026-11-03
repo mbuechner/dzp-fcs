@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- ServletResponse must expose its writable stream to the servlet. Returning
+         this cached wrapper is deliberate: copying/buffering it would change the
+         streaming and byte-observation contract. No application state is exposed. -->
+    <Match>
+        <Class name="de.ddb.labs.dzpfcs.logging.RequestLoggingFilter$ObservedResponse"/>
+        <Method name="getOutputStream"/>
+        <Bug pattern="EI_EXPOSE_REP"/>
+    </Match>
+</FindBugsFilter>

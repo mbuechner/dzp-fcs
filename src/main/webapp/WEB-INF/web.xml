@@ -12,6 +12,17 @@
         <param-value>https://www.deutsche-digitale-bibliothek.de/newspaper</param-value>
     </context-param>
 
+    <!-- Synchronous request scope includes SRU parsing, backend work and serialization. -->
+    <filter>
+        <filter-name>RequestLogging</filter-name>
+        <filter-class>de.ddb.labs.dzpfcs.logging.RequestLoggingFilter</filter-class>
+    </filter>
+    <filter-mapping>
+        <filter-name>RequestLogging</filter-name>
+        <url-pattern>/*</url-pattern>
+        <dispatcher>REQUEST</dispatcher>
+    </filter-mapping>
+
     <servlet>
         <display-name>German newspaper portal SRU/CQL FCS 2.0 Endpoint</display-name>
         <servlet-name>SRU/CQL</servlet-name>

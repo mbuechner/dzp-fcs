@@ -171,6 +171,13 @@
             <version>${log4j.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-layout-template-json</artifactId>
+            <scope>runtime</scope>
+            <version>${log4j.version}</version>
+        </dependency>
+
         <!-- NOTE: other dependencies for local search engine ... -->
         <dependency>
             <groupId>io.github.cdimascio</groupId>
@@ -221,6 +228,9 @@
                 <groupId>com.github.spotbugs</groupId>
                 <artifactId>spotbugs-maven-plugin</artifactId>
                 <version>${spotbugs-maven-plugin.version}</version>
+                <configuration>
+                    <excludeFilterFile>${project.basedir}/config/spotbugs-exclude.xml</excludeFilterFile>
+                </configuration>
             </plugin>
         </plugins>
     </reporting>
@@ -302,6 +312,9 @@
                 <groupId>com.github.spotbugs</groupId>
                 <artifactId>spotbugs-maven-plugin</artifactId>
                 <version>${spotbugs-maven-plugin.version}</version>
+                <configuration>
+                    <excludeFilterFile>${project.basedir}/config/spotbugs-exclude.xml</excludeFilterFile>
+                </configuration>
                 <dependencies>
                     <dependency>
                         <groupId>com.github.spotbugs</groupId>

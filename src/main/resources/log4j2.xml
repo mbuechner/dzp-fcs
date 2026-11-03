@@ -1,26 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Configuration>
-    <Properties>
-        <Property name="layout">%d %p %C{1.} [%t] %m%n</Property>
-    </Properties>
     <Appenders>
         <Console name="Console" target="SYSTEM_OUT">
-            <PatternLayout pattern="%style{%d{ISO8601}}{grey} %highlight{%-5level }[%style{%t}{bright,blue}] %style{%C{1.}}{bright,yellow}: %msg%n%throwable" />
+            <!-- One escaped JSON object per line, including framework messages. -->
+            <JsonTemplateLayout eventTemplateUri="classpath:StructuredLogLayout.json"
+                                maxStringLength="65536"
+                                eventDelimiter="&#10;" />
         </Console>
     </Appenders>
     <Loggers>
         <Logger name="de.ddb.labs.dzpfcs" level="INFO" additivity="false">
             <AppenderRef ref="Console" />
         </Logger>
-        <Logger name="eu.clarin.sru.server" level="INFO" additivity="false">
-            <AppenderRef ref="Console" />
-        </Logger>
-        <Logger name="eu.clarin.sru.server.SRUServer" level="info" additivity="false">
-            <Filters>
-                <RegexFilter regex="^explain$" onMatch="DENY" onMismatch="ACCEPT"/>
-            </Filters>
-            <AppenderRef ref="Console"/>
-        </Logger>
+        <!-- Request telemetry replaces CLARIN's duplicate INFO query messages. -->
+        <Logger name="eu.clarin.sru" level="WARN" />
         <!-- LOG everything at INFO level -->
         <Root level="INFO">
             <AppenderRef ref="Console" />
