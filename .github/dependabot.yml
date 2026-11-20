@@ -1,7 +1,13 @@
 version: 2
+registries:
+  clarin:
+    type: maven-repository
+    url: https://nexus.clarin.eu/repository/Clarin/
+
 updates:
   - package-ecosystem: maven
     directory: /
+    registries: [clarin]
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
