@@ -59,7 +59,9 @@ for deployment in "$webapps"/* "$webapps"/.[!.]* "$webapps"/..?*; do
         "$deployed_war")
             [ -f "$deployment" ] && [ ! -L "$deployment" ] \
                 || fail "Expected a regular WAR file: $deployment"
-            cmp -s "$source_war" "$deployment" \
+            source_checksum=$(sha256sum < "$source_war")
+            deployed_checksum=$(sha256sum < "$deployment")
+            [ "$source_checksum" = "$deployed_checksum" ] \
                 || fail "Existing WAR differs from this image: $deployment" ;;
         "$expanded_app")
             [ -d "$deployment" ] && [ ! -L "$deployment" ] \

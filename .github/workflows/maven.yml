@@ -1,36 +1,31 @@
-# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-java-with-maven
-
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
 name: Java CI with Maven
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
     steps:
-    - uses: actions/checkout@v7.0.1
-    - name: Set up JDK 25 LTS
-      uses: actions/setup-java@v6.1.0
-      with:
-        java-version: '25'
-        distribution: 'temurin'
-        cache: maven
-    - name: Build with Maven
-      run: mvn -B package --file pom.xml
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Amazon Corretto 25 LTS
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: corretto
+          java-version: '25'
+          cache: maven
+      - name: Build and test with Maven
+        run: mvn -B -ntp package
+      - name: Test container entrypoint
+        run: sh config/tests/docker-entrypoint-test.sh
 
   dependency-submission:
     if: github.event_name == 'push'
@@ -38,15 +33,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
-    - uses: actions/checkout@v7.0.1
-    - name: Set up JDK 25 LTS
-      uses: actions/setup-java@v6.1.0
-      with:
-        java-version: '25'
-        distribution: 'temurin'
-        cache: maven
-    # Upload the dependency graph after a successful push build.
-    - name: Update dependency graph
-      uses: advanced-security/maven-dependency-submission-action@v6.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Amazon Corretto 25 LTS
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: corretto
+          java-version: '25'
+          cache: maven
+      - name: Update dependency graph
+        uses: advanced-security/maven-dependency-submission-action@a64327a7329c9939cf675e458452febe1894a70c # v6.0.1

@@ -15,12 +15,10 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<!-- Active settings follow the Tomcat 9.0.123 default server.xml. Review this
-     file when upgrading the base image. Container ENV substitution is enabled
-     in catalina.properties by the Dockerfile; no startup XML rewrite is needed. -->
+<!-- Based on the Tomcat 9 default server.xml with the Java NIO connector.
+     The Dockerfile enables environment substitution in catalina.properties. -->
 <Server port="8005" shutdown="SHUTDOWN">
     <Listener className="org.apache.catalina.startup.VersionLoggerListener"/>
-    <Listener className="org.apache.catalina.core.AprLifecycleListener"/>
     <Listener className="org.apache.catalina.core.JreMemoryLeakPreventionListener"/>
     <Listener className="org.apache.catalina.mbeans.GlobalResourcesLifecycleListener"/>
     <Listener className="org.apache.catalina.core.ThreadLocalLeakPreventionListener"/>

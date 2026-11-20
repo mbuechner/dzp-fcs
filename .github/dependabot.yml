@@ -1,0 +1,47 @@
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    allow:
+      - dependency-name: '*'
+        update-types: [version-update:semver-minor, version-update:semver-patch]
+    groups:
+      maven-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/check-container
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    allow:
+      - dependency-name: '*'
+        update-types: [version-update:semver-minor, version-update:semver-patch]
+    groups:
+      actions-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    groups:
+      docker-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+    ignore:
+      # The daily container check picks up new digests for these floating tags.
+      - dependency-name: amazoncorretto
+        versions: ['>= 26']
+      # Retain Maven 3 and Java 25 in the compound image tag.
+      - dependency-name: maven
+      # Keep the floating Tomcat 9 distribution tag for Servlet 4.
+      - dependency-name: tomcat

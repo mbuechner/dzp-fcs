@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>de.ddb.labs</groupId>
     <artifactId>dzp-fcs</artifactId>
-    <version>1.5</version>
+    <version>1.5.2</version>
     <packaging>war</packaging>
     <name>German newspaper portal SRU/CQL FCS 2.0 Endpoint</name>
     <description>SRU/CQL FCS 2.0 FCS Endpoint Service for the German newspaper portal</description>
@@ -32,8 +32,10 @@
     <properties>
         <!-- project settings -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.release>25</maven.compiler.release>
-        <jackson.version>3.2.4</jackson.version>
+        <project.build.outputTimestamp>1980-01-01T00:00:02Z</project.build.outputTimestamp>
+        <java.version>25</java.version>
+        <maven.compiler.release>${java.version}</maven.compiler.release>
+        <jackson.version>3.3.0</jackson.version>
         <log4j.version>2.26.1</log4j.version>
         <lombok.version>1.18.48</lombok.version>
         <spotbugs.version>4.10.5</spotbugs.version>
@@ -269,6 +271,29 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-war-plugin</artifactId>
                 <version>3.5.1</version>
+            </plugin>
+            <plugin>
+                <groupId>org.cyclonedx</groupId>
+                <artifactId>cyclonedx-maven-plugin</artifactId>
+                <version>2.9.3</version>
+                <configuration>
+                    <projectType>application</projectType>
+                    <outputFormat>json</outputFormat>
+                    <outputName>dzp-fcs-sbom</outputName>
+                    <includeBomSerialNumber>false</includeBomSerialNumber>
+                    <includeProvidedScope>false</includeProvidedScope>
+                    <includeSystemScope>false</includeSystemScope>
+                    <includeTestScope>false</includeTestScope>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-sbom</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>makeBom</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

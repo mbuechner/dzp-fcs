@@ -27,7 +27,7 @@ cd dzp-fcs
 
 ## Build and checks
 
-Building requires JDK 25 LTS and Apache Maven. CI and the Docker build use Eclipse Temurin 25.
+Building requires JDK 25 LTS and Apache Maven. CI and the Docker build use Amazon Corretto 25.
 
 Run commands from the repository root. Maven builds the Web Application Archive (WAR):
 
@@ -37,13 +37,13 @@ mvn -B package
 
 Use `mvn -B clean package` for a fresh build without previous Maven output.
 
-`mvn -B package` runs the unit and regression tests and builds the WAR. Tests cover real CQL parser output, backend retry/deadline behavior, concurrent JSON parsing, per-endpoint lifecycle state, request telemetry, snippet compatibility and offline FCS schema validation. The two vendored FCS schemas include their source commit and checksums in [`src/test/resources/fcs20/PROVENANCE.txt`](../src/test/resources/fcs20/PROVENANCE.txt).
+`mvn -B package` runs the unit and regression tests, builds the WAR and writes a CycloneDX SBOM to `target/dzp-fcs-sbom.json`. Tests cover real CQL parser output, backend retry/deadline behavior, concurrent JSON parsing, per-endpoint lifecycle state, request telemetry, snippet compatibility and offline FCS schema validation. The two vendored FCS schemas include their source commit and checksums in [`src/test/resources/fcs20/PROVENANCE.txt`](../src/test/resources/fcs20/PROVENANCE.txt).
 
 Run `mvn -B spotbugs:check` after compilation for static analysis. [`config/spotbugs-exclude.xml`](../config/spotbugs-exclude.xml) documents one narrow exclusion: a servlet must receive its writable response stream, so returning the cached observation wrapper is intentional rather than an accidental exposure of mutable application state.
 
 The configured OWASP dependency check is bound to Maven's `verify` phase. It is not executed by the `package` command used in CI and the container build. Run `mvn -B verify` separately when that check is needed; it may require vulnerability-data downloads or a prepared local cache.
 
-The container uses Tomcat 9 with Servlet 4.0 (`javax.servlet`). Tomcat 10 or 11 requires migrating the application and its servlet dependencies to `jakarta.servlet`; see the [Tomcat migration guide](https://tomcat.apache.org/migration-10.html). Review the owned [server.xml](../config/tomcat/server.xml) when upgrading the base image. Apache has announced the end of Tomcat 9.0 support on **31 March 2027**, with releases of the compatible 9.1 branch continuing until **31 December 2030**; see the [Tomcat support announcement](https://tomcat.apache.org/tomcat-9.0.x-eos).
+The container copies the Tomcat 9 distribution into the Corretto runtime image and uses the Java NIO connector on port 8080. It runs as UID `10001` with group `0` and supports OpenShift's arbitrary UIDs in that group. Tomcat 9 supplies Servlet 4.0 (`javax.servlet`). Tomcat 10 or 11 requires migrating the application and its servlet dependencies to `jakarta.servlet`; see the [Tomcat migration guide](https://tomcat.apache.org/migration-10.html). Review the owned [server.xml](../config/tomcat/server.xml) when upgrading Tomcat. Apache has announced the end of Tomcat 9.0 support on **31 March 2027**, with releases of the compatible 9.1 branch continuing until **31 December 2030**; see the [Tomcat support announcement](https://tomcat.apache.org/tomcat-9.0.x-eos).
 
 Run `sh config/tests/docker-entrypoint-test.sh target/entrypoint-tests` for the container entrypoint scenarios. It checks path normalization, WAR naming, public-path overrides, invalid configurations and restarts, retaining its artifacts for inspection.
 

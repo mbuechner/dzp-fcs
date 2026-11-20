@@ -4,7 +4,7 @@ An SRU/CQL [Federated Content Search](https://www.clarin.eu/content/federated-co
 
 The [German Digital Library](https://www.deutsche-digitale-bibliothek.de/) provides the searchable newspaper corpus. FCS lets clients search it alongside resources from other providers.
 
-**Stack:** Java 25 · Maven · Servlet 4 / Tomcat 9 · CLARIN FCS · OkHttp · Jackson · Log4j JSON logs.
+**Stack:** Amazon Corretto 25 LTS · Maven · Servlet 4 / Tomcat 9 · CLARIN FCS · OkHttp · Jackson · Log4j JSON logs.
 
 **Live:** [labs.deutsche-digitale-bibliothek.de/app/dzp-fcs](https://labs.deutsche-digitale-bibliothek.de/app/dzp-fcs)
 
@@ -47,14 +47,23 @@ Omit `version` for native SRU 2.0; use `version=1.2` for SRU 1.2. Responses use 
 
 ## Build
 
-Requires JDK 25 and Maven:
+Requires JDK 25 and Maven. CI and the container build use Amazon Corretto 25.
 
 ```bash
-mvn -B package              # tests + target/dzp-fcs.war
+mvn -B package              # tests, target/dzp-fcs.war and target/dzp-fcs-sbom.json
 mvn -B spotbugs:check       # static analysis after compilation
 ```
 
 The WAR uses `javax.servlet`; Tomcat 10/11 requires Jakarta migration. The Docker build supplies the Java/Maven toolchain. [Development notes](docs/development.md) cover packages, checks and protocol limitations.
+
+## Container releases
+
+The [Docker workflow](.github/workflows/docker-publish.yml) runs on `main` and builds `linux/amd64` from the source and Dockerfile at the release tag.
+
+- **Triggers** — Stable GitHub Release (tag a commit with the workflow), daily at 08:17 Europe/Berlin, or **Actions → Docker → Run workflow** on `main` with optional `release_tag`.
+- **Rebuild** — Release commit changed, base-image digest changed, or GHCR version tag missing. Otherwise, rescan the existing digest.
+- **Checks** — SRU Explain (`CONTAINER_HTTP_PATH`) → image and optional CycloneDX CVE scans → Cosign → GHCR. Fixable High or Critical CVEs block publication.
+- **Tags** — Every published image gets its version tag. The maintained release also gets `latest` and `tagged`. It defaults to the latest stable release and can be pinned with `CONTAINER_RELEASE_TAG`.
 
 ## Configure
 
